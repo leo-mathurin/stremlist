@@ -1,16 +1,22 @@
-import type { TitleType } from "@stremlist/shared/constants";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import {
   PROVIDERS,
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import { storedSourceNoun } from "@stremlist/shared/source-problems";
-import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
+import type { ListCatalog } from "@stremlist/shared/manifest-catalogs";
+import type {
+  ConfigList,
+  NewTitlesSettings,
+  StremioMeta,
+} from "@stremlist/shared/stremio.types";
 import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getVisibleLists, visibleLists } from "./accounts";
+import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
+import { sortCatalog } from "./catalog-sort";
 import { listConnections } from "./connections";
 import { getCachedList } from "./list-cache";
 import type { SourceMeta } from "./list-cache";
@@ -238,19 +244,23 @@ function withDetectionLine(meta: StremioMeta, detection: Detection) {
  * Title whose Source list has no cached Catalog yet waits for the next
  * request.
  */
-export async function getNewTitlesCatalog(
+export async function getDetectedMetas(
   access: AccountAccess,
-  type: TitleType,
+  draftSources?: SourceId[],
 ) {
   const lists = await getVisibleLists(access);
-  const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
+  const included = draftSources && new Set(draftSources.map(sourceKey));
+  const caches = lists
+    .flatMap(sourceCaches)
+    .filter(({ source }) => !included || included.has(sourceKey(source)));
+  const sources = caches.map(({ source }) => source);
   if (sources.length === 0) return [];
   const { histories } = await loadHistories(access.account.id, sources);
   const detections = toDetections(lists, histories);
   if (detections.length === 0) return [];
 
   const cached = await Promise.all(
-    lists.flatMap(sourceCaches).map(async ({ source, cacheKey }) => {
+    caches.map(async ({ source, cacheKey }) => {
       const catalog = await getCachedList(cacheKey, source);
       return [
         sourceKey(source),
@@ -268,9 +278,39 @@ export async function getNewTitlesCatalog(
       [...metasBySource.values()]
         .map((metas) => metas.get(detection.imdbId))
         .find((found) => !!found);
-    if (meta?.type !== type) return [];
+    if (!meta) return [];
     return [withDetectionLine(toStremioMeta(meta), detection)];
   });
+}
+
+/** Date Added sorts by input position. Detected metas arrive newest first. */
+export function selectNewTitlesCatalog(
+  metas: StremioMeta[],
+  {
+    sortOption,
+    catalogSettings,
+  }: Pick<NewTitlesSettings, "sortOption" | "catalogSettings">,
+  { type, preset }: ListCatalog,
+  accountId: string,
+) {
+  const savedSort =
+    sortOption === "detected_at-desc"
+      ? "added_at-asc"
+      : sortOption === "detected_at-asc"
+        ? "added_at-desc"
+        : sortOption;
+  const { sort, filters } = resolveCatalogSelection(
+    savedSort,
+    catalogSettings,
+    null,
+    preset ?? undefined,
+  );
+  return filterCatalog(
+    sortCatalog(metas, sort, `new-titles:${accountId}`).filter(
+      (meta) => meta.type === type,
+    ),
+    filters,
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ListSource, MergeableList } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
+import type { NewTitlesCatalogOptions } from "@stremlist/shared/manifest-catalogs";
 import type { ConfigList, TitleGenres } from "@stremlist/shared/stremio.types";
 
 /** A List row of the configure page, as far as the manifest cares. */
@@ -67,7 +68,7 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres) {
 export function getListReinstallSignature(
   rows: SignatureRow[],
   known: KnownSourceGenres | null,
-  options: { newTitles: boolean } = { newTitles: false },
+  options: NewTitlesCatalogOptions = { newTitles: false },
 ) {
   return JSON.stringify(
     addonCatalogEntries(

@@ -1,4 +1,5 @@
 import type { TitleType } from "@stremlist/shared/constants";
+import { DEFAULT_NEW_TITLES_SETTINGS } from "@stremlist/shared/manifest-catalogs";
 import { queuedCatalogCopy } from "@stremlist/shared/provider-queue";
 import {
   sourceProblemCopy,
@@ -12,7 +13,10 @@ import {
   filterCatalog,
 } from "../services/catalog-filters";
 import { parseCatalogId } from "../services/catalog-id";
-import { getNewTitlesCatalog } from "../services/detections";
+import {
+  getDetectedMetas,
+  selectNewTitlesCatalog,
+} from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
 import { withAccountPosters } from "../services/posters";
 
@@ -121,7 +125,21 @@ async function serveCatalog(c: Context) {
       if (!access.account.newTitlesCatalog || extra.has("search")) {
         return c.json({ metas: [] });
       }
-      const metas = await getNewTitlesCatalog(access, parsedCatalog.type);
+      const settings =
+        access.account.newTitlesSettings ?? DEFAULT_NEW_TITLES_SETTINGS;
+      const { type, preset } = parsedCatalog;
+      if (settings.displayMode !== "split" && settings.displayMode !== type) {
+        return c.json({ metas: [] });
+      }
+      if (preset && !settings.catalogSettings?.presets?.includes(preset)) {
+        return c.json({ metas: [] });
+      }
+      const metas = selectNewTitlesCatalog(
+        await getDetectedMetas(access),
+        settings,
+        { type, preset: preset ?? null },
+        access.account.id,
+      );
       return c.json({
         metas: await withAccountPosters(
           metas.slice(skip, skip + CATALOG_PAGE_SIZE),

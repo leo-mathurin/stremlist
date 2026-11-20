@@ -1,4 +1,5 @@
 import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
+import type { NewTitlesCatalogOptions } from "@stremlist/shared/manifest-catalogs";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
 import { buildCatalogId, buildNewTitlesCatalogId } from "./catalog-id";
@@ -16,19 +17,15 @@ function catalogExtras(genres: string[], search: boolean) {
   ];
 }
 
-/**
- * The manifest Catalogs: the "New titles" ones (ADR 0007) when the Account
- * has them on, then those of the Lists. The configure page compares the same
- * entries (`addonCatalogEntries`) to know when a save needs a reinstall.
- */
+/** The manifest and configure page use the same Catalog ordering and names. */
 export function buildManifestCatalogs(
   lists: ConfigList[],
-  options: { newTitles: boolean } = { newTitles: false },
+  options: NewTitlesCatalogOptions = { newTitles: false },
 ) {
   return addonCatalogEntries(lists, options).map((entry) =>
     "newTitles" in entry
       ? {
-          id: buildNewTitlesCatalogId(entry.type),
+          id: buildNewTitlesCatalogId(entry.type, entry.preset),
           name: entry.name,
           type: entry.type,
           extra: [{ name: "skip", isRequired: false }],

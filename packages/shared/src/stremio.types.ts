@@ -1,6 +1,7 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode, TitleType } from "./constants";
 import type { ListSource } from "./list-merge";
+import type { NewTitlesSort } from "./manifest-catalogs";
 import type { PosterSource } from "./poster";
 import type { ProviderId } from "./providers";
 import type { ListSyncStatuses } from "./sync-status";
@@ -73,6 +74,16 @@ export interface NewTitlesSummary {
   waitingLists: number;
 }
 
+/** The settings of the Account's built-in detection list. */
+export interface NewTitlesSettings {
+  catalogTitle: string;
+  sortOption: NewTitlesSort;
+  displayMode: DisplayMode;
+  /** The number of provider Lists before this List. */
+  position: number;
+  catalogSettings?: CatalogSettings;
+}
+
 /**
  * The sync status of an Account's Lists and its Connections. The configure
  * page gets it with the config, after "Refresh now" and from its polls.
@@ -100,6 +111,7 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   actions: { enabled: boolean; providers: ProviderId[] };
   newTitles: {
     enabled: boolean;
+    settings?: NewTitlesSettings;
     /** Null when the detection history cannot be read right now. */
     summary: NewTitlesSummary | null;
   };
@@ -128,7 +140,7 @@ export interface AccountConfigInput {
   posterSource?: PosterSource;
   lists: ConfigListInput[];
   actions?: { enabled: boolean; providers: ProviderId[] };
-  newTitles?: { enabled: boolean };
+  newTitles?: { enabled: boolean; settings?: NewTitlesSettings };
 }
 
 export interface StremioMeta {

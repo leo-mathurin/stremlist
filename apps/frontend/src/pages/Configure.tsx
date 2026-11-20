@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { MAX_LISTS, connectionProviders } from "@stremlist/shared/list-merge";
+import {
+  MAX_LISTS,
+  connectionProviders,
+  listSources,
+  sourceKey,
+} from "@stremlist/shared/list-merge";
 import {
   isProviderId,
   PROVIDERS,
@@ -30,7 +35,7 @@ import {
 import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
-import NewTitlesSettings from "../components/NewTitlesSettings";
+import NewTitlesRow from "../components/NewTitlesRow";
 import PosterSourceSettings from "../components/PosterSourceSettings";
 import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
@@ -51,7 +56,8 @@ import { useWatchTracking } from "../hooks/useWatchTracking";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
 import { NEW_ACCOUNT_STORAGE } from "../lib/connections";
-import { rowTitle, sourceKeys } from "../lib/list-form";
+import { sourceKeys } from "../lib/list-form";
+import { catalogRows } from "../lib/new-titles";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn } from "@/lib/utils";
@@ -218,6 +224,10 @@ export default function Configure() {
     () => void config.stremio.retry(),
   );
   const rows = lists.map((list) => config.rowModel(list));
+  const shownRows = catalogRows(lists, config.newTitles);
+  const allGenres = [
+    ...new Set(lists.flatMap((list) => list.availableGenres)),
+  ].sort();
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
   const leaveBlocker = useLeaveGuard(
     config.dirty && config.connecting === null,
@@ -247,7 +257,7 @@ export default function Configure() {
     const frame = requestAnimationFrame(() => {
       const element = listRowElement(lastAdded.localId);
       if (!element || isInView(element)) return;
-      toast.success(`Added ${rowTitle(lastAdded)}`, {
+      toast.success(`Added ${lastAdded.title}`, {
         id: "list-add",
         action: {
           label: "Show",
@@ -590,7 +600,7 @@ export default function Configure() {
             )}
 
             <section className="space-y-3">
-              {lists.length === 0 ? (
+              {lists.length === 0 && (
                 <div className="rounded-3xl border-2 border-dashed border-black/10 p-6 text-center">
                   <p className="font-bold">No lists yet</p>
                   <p className="mx-auto mt-1 max-w-sm text-sm text-pretty text-black/55">
@@ -598,25 +608,65 @@ export default function Configure() {
                     below.
                   </p>
                 </div>
-              ) : (
+              )}
+              {shownRows.length > 0 && (
                 <DragDropProvider
                   sensors={catalogSensors}
                   onDragEnd={(event) => {
-                    if (event.canceled) return;
+                    if (event.canceled || policy.editLock) return;
                     const { source } = event.operation;
                     if (isSortable(source)) {
                       const { initialIndex, index } = source;
                       if (initialIndex !== index) {
-                        config.reorderLists(initialIndex, index);
+                        config.reorderRows(initialIndex, index);
                       }
                     }
                   }}
                 >
                   <ConnectionsContext value={config.connections}>
                     <div className="space-y-3">
-                      {lists.map((list, index) => {
+                      {shownRows.map((row, index) => {
+                        const onMoveUp =
+                          !policy.editLock && index > 0
+                            ? () => config.reorderRows(index, index - 1)
+                            : undefined;
+                        const onMoveDown =
+                          !policy.editLock && index < shownRows.length - 1
+                            ? () => config.reorderRows(index, index + 1)
+                            : undefined;
+                        if (row.kind === "new-titles") {
+                          return (
+                            <NewTitlesRow
+                              key={row.id}
+                              settings={config.newTitles.settings}
+                              index={index}
+                              justAdded={row.id === lastAdded?.localId}
+                              summary={config.newTitlesSummary}
+                              genres={allGenres}
+                              sources={lists
+                                .flatMap(listSources)
+                                .map(({ provider, sourceRef }) => ({
+                                  provider,
+                                  sourceRef,
+                                }))
+                                .sort((a, b) =>
+                                  sourceKey(a).localeCompare(sourceKey(b)),
+                                )}
+                              previewRevision={config.newTitlesRevision}
+                              locked={!!policy.editLock}
+                              accountKey={accountId ?? accountKey}
+                              rpdbApiKey={config.rpdbApiKey}
+                              posterSource={config.posterSource}
+                              onFieldChange={config.setNewTitlesField}
+                              onRemove={config.removeNewTitles}
+                              onMoveUp={onMoveUp}
+                              onMoveDown={onMoveDown}
+                            />
+                          );
+                        }
+                        const { list } = row;
                         const { sync, missing, connectProvider, saved } =
-                          rows[index];
+                          rows[row.listIndex];
                         return (
                           <SortableListRow
                             key={list.localId}
@@ -628,16 +678,8 @@ export default function Configure() {
                             posterSource={config.posterSource}
                             onFieldChange={config.setListField}
                             onRemove={config.removeList}
-                            onMoveUp={
-                              !policy.editLock && index > 0
-                                ? () => config.reorderLists(index, index - 1)
-                                : undefined
-                            }
-                            onMoveDown={
-                              !policy.editLock && index < lists.length - 1
-                                ? () => config.reorderLists(index, index + 1)
-                                : undefined
-                            }
+                            onMoveUp={onMoveUp}
+                            onMoveDown={onMoveDown}
                             missingProviders={missing}
                             sync={sync}
                             saved={saved}
@@ -668,7 +710,7 @@ export default function Configure() {
               )}
               <p className="px-1 text-xs text-black/45 tabular-nums">
                 {lists.length} of {MAX_LISTS} lists
-                {lists.length > 1 &&
+                {shownRows.length > 1 &&
                   ". Drag the handle, or use Move up and Move down in Settings."}
               </p>
             </section>
@@ -696,6 +738,14 @@ export default function Configure() {
                   const error = config.addChartList(chartId);
                   notifyAddProblem(error);
                 }}
+                newTitles={
+                  config.newTitles.enabled
+                    ? null
+                    : {
+                        onAdd: config.addNewTitles,
+                        disabled: !!policy.editLock,
+                      }
+                }
               />
             </section>
 
@@ -749,13 +799,6 @@ export default function Configure() {
                 }}
                 onInstallAgain={() => stremioStep(config.stremio.installAgain)}
                 onUpdateStremio={() => stremioStep(config.stremio.retry)}
-              />
-
-              <NewTitlesSettings
-                enabled={config.newTitlesEnabled}
-                onEnabledChange={config.setNewTitlesEnabled}
-                summary={config.newTitlesSummary}
-                locked={policy.editLock}
               />
             </section>
 

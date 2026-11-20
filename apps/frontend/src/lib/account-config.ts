@@ -4,6 +4,8 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess } from "@stremlist/shared/stremio.types";
 import { listPayload } from "./list-form";
 import type { ListFormRow } from "./list-form";
+import { newTitlesPayload } from "./new-titles";
+import type { NewTitlesForm } from "./new-titles";
 import { ACTION_PROVIDERS } from "./provider-groups";
 
 /** "new" until the first save creates the Account. */
@@ -86,7 +88,8 @@ export interface AccountForm {
   posterSource: PosterSource;
   actionsEnabled: boolean;
   actions: ActionProviders;
-  newTitlesEnabled: boolean;
+  /** The built-in "New titles" catalog, shown among the Lists when on. */
+  newTitles: NewTitlesForm;
 }
 
 /**
@@ -107,7 +110,7 @@ export function configBody(form: AccountForm, access: AccountAccess) {
             ),
           }
         : undefined,
-    newTitles: { enabled: form.newTitlesEnabled },
+    newTitles: newTitlesPayload(form.newTitles),
   };
 }
 

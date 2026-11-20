@@ -15,9 +15,15 @@ import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
-import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
+import type {
+  AccountConfigInput,
+  AddonAccess,
+  ConfigList,
+  NewTitlesSettings,
+} from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { supabase } from "../lib/supabase";
+import { newTitlesSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
 import { listRowSchema, mapList, toStoredSources } from "./list-rows";
 import { unusedSourceCaches } from "./merged-lists";
@@ -34,6 +40,7 @@ export interface Account {
   actionProviders: ProviderId[];
   /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
   newTitlesCatalog: boolean;
+  newTitlesSettings?: NewTitlesSettings;
   lastFetchedAt: string;
 }
 
@@ -79,7 +86,7 @@ export interface ListInput {
 export class MergedSourcesChangedError extends Error {}
 
 function mapAccount(row: AccountRow) {
-  return {
+  const account: Account = {
     id: row.id,
     legacyImdbUserId: row.legacy_imdb_user_id,
     rpdbApiKey: row.rpdb_api_key,
@@ -89,8 +96,12 @@ function mapAccount(row: AccountRow) {
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
     newTitlesCatalog: row.new_titles_catalog,
+    newTitlesSettings: newTitlesSettingsSchema.safeParse(
+      row.new_titles_settings,
+    ).data,
     lastFetchedAt: row.last_fetched_at,
   };
+  return account;
 }
 
 /**
@@ -229,6 +240,11 @@ function mapLists(rows: unknown) {
     .filter((list): list is ConfigList => !!list);
 }
 
+function toStoredNewTitles(settings: NewTitlesSettings | undefined) {
+  if (!settings) return undefined;
+  return { ...settings, catalogSettings: { ...settings.catalogSettings } };
+}
+
 /**
  * Create an Account with a generated ID and its first Lists and settings, in
  * one transaction. Returns the private Account ID and the saved Lists.
@@ -236,12 +252,13 @@ function mapLists(rows: unknown) {
 export async function createAccountWithConfig(
   lists: ListInput[],
   rpdbApiKey: string | null,
-  settings: { newTitlesCatalog?: boolean; posterSource?: PosterSource } = {},
+  settings: Pick<AccountConfigInput, "newTitles" | "posterSource"> = {},
 ) {
   const { data, error } = await supabase.rpc("create_account_with_config", {
     p_rpdb_api_key: rpdbApiKey,
     p_lists: toStoredLists(lists),
-    p_new_titles_catalog: settings.newTitlesCatalog ?? null,
+    p_new_titles_catalog: settings.newTitles?.enabled ?? null,
+    p_new_titles_settings: toStoredNewTitles(settings.newTitles?.settings),
     p_poster_source: settings.posterSource ?? null,
   });
   if (error) {
@@ -261,20 +278,20 @@ export async function replaceAccountConfig(
   accountId: string,
   lists: ListInput[],
   rpdbApiKey: string | null,
-  settings: {
-    actions?: { enabled: boolean; providers: ProviderId[] };
-    newTitlesCatalog?: boolean;
-    posterSource?: PosterSource;
-  } = {},
+  settings: Pick<
+    AccountConfigInput,
+    "actions" | "newTitles" | "posterSource"
+  > = {},
 ) {
-  const { actions, newTitlesCatalog, posterSource } = settings;
+  const { actions, newTitles, posterSource } = settings;
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
     p_lists: toStoredLists(lists),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
-    p_new_titles_catalog: newTitlesCatalog ?? null,
+    p_new_titles_catalog: newTitles?.enabled ?? null,
+    p_new_titles_settings: toStoredNewTitles(newTitles?.settings),
     p_poster_source: posterSource ?? null,
   });
   if (error) {

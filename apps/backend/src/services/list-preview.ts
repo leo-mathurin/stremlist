@@ -10,13 +10,16 @@ import type {
 import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import type {
+  NewTitlesSettings,
+  StremioMeta,
+} from "@stremlist/shared/stremio.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
 import type { ListCatalog } from "@stremlist/shared/manifest-catalogs";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
 import { LruCache } from "../lib/lru";
@@ -26,8 +29,10 @@ import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
 import { SourceBusyError, SourceUnavailableError } from "../providers/types";
 import { findPosters } from "../titles/title-posters";
+import type { AccountAccess } from "./accounts";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
+import { getDetectedMetas, selectNewTitlesCatalog } from "./detections";
 import type { BuiltCatalog } from "./lists";
 import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
 import { mergeListCatalogs } from "./merged-lists";
@@ -59,6 +64,11 @@ export interface PreviewRequest {
   /** The place in a Provider's queue from a queued answer. */
   ticket?: string | null;
 }
+
+type NewTitlesPreview = Pick<
+  NewTitlesSettings,
+  "sortOption" | "displayMode" | "catalogSettings"
+> & { sources?: SourceId[] };
 
 interface Reading {
   built: Promise<BuiltCatalog>;
@@ -233,21 +243,24 @@ async function addPosters(titles: PreviewTitle[]) {
 }
 
 async function presentPreview(
-  request: PreviewRequest,
-  read: BuiltCatalog[],
-  sourceProblems: PreviewSourceProblem[],
+  settings: Pick<PreviewRequest, "displayMode" | "catalogSettings">,
+  metas: StremioMeta[],
+  matchingMetas: (catalog: ListCatalog) => StremioMeta[],
+  read: BuiltCatalog[] = [],
+  sourceProblems: PreviewSourceProblem[] = [],
 ) {
-  const metas = previewMetas(request, read);
   const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
 
-  const catalogs: CatalogPreviewRow[] = listCatalogs(request).map((catalog) => {
-    const matching = catalogMetas(request, metas, catalog);
-    return {
-      ...catalog,
-      total: matching.length,
-      titles: matching.slice(0, TITLES_PER_CATALOG).map(toPreviewTitle),
-    };
-  });
+  const catalogs: CatalogPreviewRow[] = listCatalogs(settings).map(
+    (catalog) => {
+      const matching = matchingMetas(catalog);
+      return {
+        ...catalog,
+        total: matching.length,
+        titles: matching.slice(0, TITLES_PER_CATALOG).map(toPreviewTitle),
+      };
+    },
+  );
   await addPosters(catalogs.flatMap((row) => row.titles));
 
   return {
@@ -351,7 +364,14 @@ async function readPreviewSources(request: PreviewRequest) {
 export async function previewList(request: PreviewRequest) {
   const reads = await readPreviewSources(request);
   if (!reads.ok) return reads.answer;
-  return presentPreview(request, reads.read, reads.problems);
+  const metas = previewMetas(request, reads.read);
+  return presentPreview(
+    request,
+    metas,
+    (catalog) => catalogMetas(request, metas, catalog),
+    reads.read,
+    reads.problems,
+  );
 }
 
 /**
@@ -369,8 +389,38 @@ export async function previewCatalogTitles(
     previewMetas(request, reads.read),
     request.catalog,
   );
+  return previewTitlesPage(matching, request.offset);
+}
+
+/** Preview a detection list against the account's cached detection history. */
+export async function previewDetectedList(
+  request: NewTitlesPreview,
+  access: AccountAccess | null,
+) {
+  const metas = access ? await getDetectedMetas(access, request.sources) : [];
+  return presentPreview(request, metas, (catalog) =>
+    selectNewTitlesCatalog(metas, request, catalog, access?.account.id ?? ""),
+  );
+}
+
+export async function previewDetectedCatalogTitles(
+  request: NewTitlesPreview & { catalog: ListCatalog; offset: number },
+  access: AccountAccess | null,
+) {
+  const matching = access
+    ? selectNewTitlesCatalog(
+        await getDetectedMetas(access, request.sources),
+        request,
+        request.catalog,
+        access.account.id,
+      )
+    : [];
+  return previewTitlesPage(matching, request.offset);
+}
+
+async function previewTitlesPage(matching: StremioMeta[], offset: number) {
   const titles = matching
-    .slice(request.offset, request.offset + CATALOG_TITLES_PAGE_SIZE)
+    .slice(offset, offset + CATALOG_TITLES_PAGE_SIZE)
     .map(toPreviewTitle);
   await addPosters(titles);
   return {

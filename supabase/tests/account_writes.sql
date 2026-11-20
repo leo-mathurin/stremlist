@@ -27,12 +27,13 @@ BEGIN
 
   SELECT * INTO result FROM public.create_account_with_config('new-key',
     '[{"provider":"imdb","source_ref":"ur7000002","catalog_title":"","sort_option":"title-asc","display_mode":"split","position":0}]',
-    true);
+    true, NULL, '{"catalogTitle":"Recent releases","sortOption":"released-desc","displayMode":"movie","position":1}');
   ASSERT result.account_id ~ '^sl_[0-9A-Za-z]{22}$', 'A generated Account ID';
   ASSERT jsonb_array_length(result.lists) = 1;
   ASSERT result.lists->0->>'account_id' = result.account_id;
   ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = result.account_id) = 'new-key';
   ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = result.account_id);
+  ASSERT (SELECT new_titles_settings->>'sortOption' FROM public.accounts WHERE id = result.account_id) = 'released-desc';
   ASSERT NOT (SELECT actions_enabled FROM public.accounts WHERE id = result.account_id);
 
   -- No Lists is allowed: Simkl and MDBList users connect first.
@@ -64,9 +65,9 @@ BEGIN
   END;
   ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 3;
 
-  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
 END;
 $$;
 

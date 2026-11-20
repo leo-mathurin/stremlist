@@ -35,6 +35,7 @@ const TABLE_DEFAULTS = new Map<string, () => Row>(
       actions_enabled: false,
       action_providers: [],
       new_titles_catalog: false,
+      new_titles_settings: null,
       poster_source: "imdb",
       prewarm_lease_token: null,
       prewarm_locked_until: EPOCH,

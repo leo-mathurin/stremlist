@@ -1,3 +1,4 @@
+import { NEW_TITLES_SORT_OPTIONS } from "@stremlist/shared/manifest-catalogs";
 import { z } from "zod";
 
 export const catalogSettingsSchema = z.object({
@@ -14,4 +15,12 @@ export const catalogSettingsSchema = z.object({
       "Duplicate presets",
     )
     .optional(),
+});
+
+export const newTitlesSettingsSchema = z.object({
+  catalogTitle: z.string().trim().max(60),
+  sortOption: z.enum(NEW_TITLES_SORT_OPTIONS.map(({ value }) => value)),
+  displayMode: z.enum(["split", "movie", "series"]),
+  position: z.number().int().min(0),
+  catalogSettings: catalogSettingsSchema.optional(),
 });

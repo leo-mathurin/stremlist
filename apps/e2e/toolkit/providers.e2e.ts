@@ -81,10 +81,7 @@ test("stopping sharing keeps focus on a control chosen while saving", async ({
   const card = screen.getByRole("region", "Update your accounts from Stremio");
   await card.getByRole("button", "Stop sharing", { exact: true }).tap();
   const confirmation = screen.getByRole("group", "Stop sharing");
-  const nextSetting = screen.getByRole(
-    "checkbox",
-    "Show newly detected titles",
-  );
+  const nextSetting = screen.getByRole("button", "Settings for Test catalog");
   try {
     await confirmation
       .getByRole("button", "Stop sharing", { exact: true })

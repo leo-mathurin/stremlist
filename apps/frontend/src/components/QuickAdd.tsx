@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, ExternalLink } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Sparkles } from "lucide-react";
 import { CHART_REGISTRY } from "@stremlist/shared/imdb-charts";
 import { sourceKey } from "@stremlist/shared/list-merge";
 import {
@@ -61,6 +61,7 @@ export default function QuickAdd({
   full,
   onAdd,
   onAddChart,
+  newTitles,
 }: {
   connections: ConnectionSummary[];
   /** What each Connection unlocks, from the backend. */
@@ -71,6 +72,11 @@ export default function QuickAdd({
   full: boolean;
   onAdd: (provider: ProviderId, source: ConnectionSource) => void;
   onAddChart: (chartId: string) => void;
+  /**
+   * The built-in "New titles" catalog, offered while it is not among the
+   * rows; null when it is.
+   */
+  newTitles: { onAdd: () => void; disabled: boolean } | null;
 }) {
   const isAdded = (provider: ProviderId, sourceRef: string) =>
     usedKeys.includes(sourceKey({ provider, sourceRef }));
@@ -167,6 +173,7 @@ export default function QuickAdd({
 
   return (
     <div className="divide-y divide-black/5 rounded-3xl bg-white ring-1 ring-black/5">
+      {newTitles && <NewTitlesOffer {...newTitles} />}
       {entries.map((entry) => {
         const isOpen = open === entry.provider;
         const label = PROVIDERS[entry.provider].label;
@@ -244,6 +251,42 @@ export default function QuickAdd({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function NewTitlesOffer({
+  onAdd,
+  disabled,
+}: {
+  onAdd: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 first:rounded-t-3xl sm:px-5">
+      <span
+        aria-hidden="true"
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-brand/25 text-ink"
+      >
+        <Sparkles className="size-3.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">New titles</span>
+        <span className="block text-xs text-pretty text-black/50">
+          Titles that appear in your other lists, newest first
+        </span>
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onAdd}
+        data-testid="quick-add-new-titles"
+        aria-label="Add New titles"
+        className="relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-black/5 px-3 after:absolute after:-inset-1 after:content-[''] text-xs font-semibold transition-[background-color,scale] duration-150 ease-out outline-none enabled:hover:bg-black/10 enabled:active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:active:scale-100"
+      >
+        <PlusIcon className="size-3.5" />
+        Add
+      </button>
     </div>
   );
 }

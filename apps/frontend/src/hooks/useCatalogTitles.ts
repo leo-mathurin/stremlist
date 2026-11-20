@@ -4,24 +4,24 @@ import type {
   PreviewTitle,
 } from "@stremlist/shared/catalog-preview";
 import { api } from "@/lib/api";
-import type { ListFormRow } from "@/lib/list-form";
 import { retryDelay } from "@/lib/provider-queue";
 import { previewBody } from "./useCatalogPreview";
+import type { PreviewSubject } from "./useCatalogPreview";
 
 type LoadStatus = "idle" | "loading" | "error";
 
 /**
  * All the Titles of one Catalog of a preview, one page at a time: it starts
  * with the Titles that the preview already shows, and `loadMore` asks for
- * the next page. It asks with the List as it was when it started, so that
+ * the next page. It asks with the List (or "New titles") as it was when it started, so that
  * the pages stay in one order.
  */
 export function useCatalogTitles({
-  list,
+  subject,
   accountKey,
   row,
 }: {
-  list: ListFormRow;
+  subject: PreviewSubject;
   accountKey: string | null;
   row: CatalogPreviewRow;
 }) {
@@ -29,7 +29,7 @@ export function useCatalogTitles({
   const [total, setTotal] = useState(row.total);
   const [next, setNext] = useState(row.titles.length);
   const [status, setStatus] = useState<LoadStatus>("idle");
-  const [body] = useState(() => previewBody(list, accountKey));
+  const [body] = useState(() => previewBody(subject, accountKey));
   const loading = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);

@@ -27,7 +27,7 @@ const TOKEN = `E2E1.4102444800000.${"s".repeat(43)}`;
 const EMAIL = "member@example.com";
 const MANUAL_KEY = "stremlist:stremio-manual";
 
-const TOGGLE = "Show newly detected titles";
+const ADD_NEW_TITLES = "Add New titles";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHOICE = "Update Stremio with your changes";
 const UPDATED = "Stremio updated";
@@ -274,7 +274,7 @@ function stremioTab(browser: Browser) {
 }
 
 async function changeCatalogs(screen: Screen) {
-  await screen.getByRole("checkbox", TOGGLE).tap();
+  await screen.getByRole("button", ADD_NEW_TITLES).tap();
 }
 
 async function openConfigure(
@@ -282,7 +282,7 @@ async function openConfigure(
   screen: Screen,
 ) {
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeVisible();
+  await expect(screen.getByRole("button", ADD_NEW_TITLES)).toBeVisible();
 }
 
 function stremlistEntry(collection: Addon[]) {
@@ -389,7 +389,7 @@ test("reinstalling by hand stays available and can become the default", async ({
   await screen.getByRole("button", "I did it").tap();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
 
-  await changeCatalogs(screen);
+  await screen.getByRole("button", "Remove Stremlist New titles").tap();
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_BY_HAND)).toBeVisible();
   await expect(screen.getByRole("button", "I did it")).toBeVisible();
@@ -425,7 +425,7 @@ test("a Legacy alias install can only reinstall by hand", async ({
   });
   await routeConfig(browser, legacyConfiguration, imdbUser);
   await app.open(`/configure?account=${imdbUser}`);
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeVisible();
+  await expect(screen.getByRole("button", ADD_NEW_TITLES)).toBeVisible();
 
   await changeCatalogs(screen);
   await expect(
@@ -590,10 +590,16 @@ test("an edit made during the save still lets Stremio get what was saved", async
   await changeCatalogs(screen);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
-  await expect(saveButton(screen, "Saving")).toBeVisible();
-  await screen.getByRole("combobox", "Sort order").tap();
-  await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
-  release();
+  try {
+    await expect(saveButton(screen, "Saving")).toBeVisible();
+    await screen
+      .getByTestId("new-titles-row")
+      .getByRole("combobox", "Sort order")
+      .tap();
+    await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
+  } finally {
+    release();
+  }
 
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
   await expect

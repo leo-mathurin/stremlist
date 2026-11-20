@@ -1,11 +1,16 @@
 import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
 import type { MergeableList } from "@stremlist/shared/list-merge";
+import {
+  DEFAULT_POSTER_SOURCE,
+  isPosterSource,
+} from "@stremlist/shared/poster";
 import { z } from "zod";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { AccountForm } from "./account-config";
 import type { ListSyncState } from "./list-sync";
+import { keptNewTitles } from "./new-titles";
 
 /** Providers of a List whose Connection the Account does not have. */
 export function missingConnections(
@@ -83,7 +88,13 @@ export function dropDraft() {
   } catch {}
 }
 
-function isKeptForm(form: unknown): form is AccountForm {
+type KeptForm = Omit<AccountForm, "newTitles" | "posterSource"> & {
+  newTitles?: unknown;
+  newTitlesEnabled?: unknown;
+  posterSource?: unknown;
+};
+
+function isKeptForm(form: unknown): form is KeptForm {
   return (
     typeof form === "object" &&
     form !== null &&
@@ -98,14 +109,27 @@ export function readDraft(accountId: string | null) {
     const raw = sessionStorage.getItem(CONNECT_DRAFT_STORAGE);
     if (!raw) return null;
     const draft: unknown = JSON.parse(raw);
-    return typeof draft === "object" &&
-      draft !== null &&
-      "accountId" in draft &&
-      draft.accountId === accountId &&
-      "form" in draft &&
-      isKeptForm(draft.form)
-      ? draft.form
-      : null;
+    if (
+      !(
+        typeof draft === "object" &&
+        draft !== null &&
+        "accountId" in draft &&
+        draft.accountId === accountId &&
+        "form" in draft &&
+        isKeptForm(draft.form)
+      )
+    )
+      return null;
+    const form = draft.form;
+    return {
+      ...form,
+      newTitles: keptNewTitles(form),
+      posterSource: isPosterSource(form.posterSource)
+        ? form.posterSource
+        : form.rpdbApiKey.trim()
+          ? "rpdb"
+          : DEFAULT_POSTER_SOURCE,
+    } satisfies AccountForm;
   } catch {
     return null;
   }

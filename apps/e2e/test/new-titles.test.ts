@@ -320,8 +320,14 @@ test(
 
     await page.goto(configureUrl(accountId));
     await expect(
+      page.getByTestId("new-titles-row").getByText("Nothing detected yet"),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Settings for Stremlist New titles" })
+      .click();
+    await expect(
       page.getByText(
-        "No new titles detected yet. Stremlist could not read 1 list in full yet, so it cannot compare it.",
+        /Stremlist could not read 1 list in full yet, so it cannot compare it/,
       ),
     ).toBeVisible();
 
@@ -344,7 +350,7 @@ test(
     expect(ids(await newTitles(accountId))).toEqual([D]);
     await page.reload();
     await expect(
-      page.getByText(/^1 new title detected, the latest .+\.$/),
+      page.getByText(/^1 title detected, the latest /),
     ).toBeVisible();
   },
 );
@@ -481,6 +487,13 @@ test(
 
     expect(ok(await backend.api.getConfig(accountId)).newTitles).toEqual({
       enabled: true,
+      settings: {
+        catalogTitle: "Stremlist New titles",
+        sortOption: "detected_at-desc",
+        displayMode: "movie",
+        position: 0,
+        catalogSettings: {},
+      },
       summary: EMPTY_SUMMARY,
     });
     const manifest = await backend.api.getManifest(accountId);
@@ -670,58 +683,122 @@ test(
     expect(ids(served.metas).sort()).toEqual([A, B, C, D]);
     await page.goto(configureUrl(accountId));
     await expect(
-      page.getByText(/^2 new titles detected, the latest .+\.$/),
+      page.getByText(/^2 titles detected, the latest /),
     ).toBeVisible();
   },
 );
 
 test(
-  "the configure page shows the detections and turns the catalog on and off",
+  "the built-in list previews and saves its release order, filters, and position",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedCatalog();
-    const [first, second, third] = CATALOG_TITLES;
+    const { accountId, catalogId } = await seedCatalog();
+    const [first, second, third, fourth, fromRemovedList] = CATALOG_TITLES;
+    const detectedAt = daysAgo(3);
     await seedDetectionHistory(
       accountId,
       { provider: "imdb", sourceRef: CATALOG_FIXTURE_USER },
       { baselineAt: daysAgo(5), lastSyncAt: daysAgo(2) },
       [
         { imdbId: first.id },
-        { imdbId: second.id, detectedAt: daysAgo(3) },
-        { imdbId: third.id, detectedAt: daysAgo(2) },
+        { imdbId: second.id, detectedAt },
+        { imdbId: third.id, detectedAt },
+        { imdbId: fourth.id, detectedAt },
       ],
+    );
+    const removeId = await seedList(accountId, {
+      provider: "imdb",
+      sourceRef: WATCHLIST,
+      position: 1,
+      catalogTitle: "Other films",
+    });
+    await seedCachedCatalog(removeId, [fromRemovedList]);
+    await seedDetectionHistory(
+      accountId,
+      { provider: "imdb", sourceRef: WATCHLIST },
+      { baselineAt: daysAgo(5), lastSyncAt: daysAgo(2) },
+      [{ imdbId: fromRemovedList.id, detectedAt }],
     );
 
     await page.goto(configureUrl(accountId));
-    const toggle = page.getByRole("checkbox", {
-      name: "Show newly detected titles",
-    });
-    await expect(toggle).not.toBeChecked();
-    await expect(toggle).toHaveAccessibleDescription(
-      /^Adds a “New titles” catalog to Stremio with the titles that appear in your lists/,
-    );
+    const add = page.getByRole("button", { name: "Add New titles" });
+    const row = page.getByTestId("new-titles-row");
+    const titleLinks = row.getByRole("link", { name: /on IMDb/ });
+    const previewOrder = () =>
+      titleLinks.evaluateAll((links) =>
+        links.map((link) => link.getAttribute("href")),
+      );
+    const orderedTitles = (titles: StremioMeta[]) =>
+      titles.map(({ id }) => `https://www.imdb.com/title/${id}/`);
+    await expect(row).toHaveCount(0);
+    await add.click();
     await expect(
-      page.getByText("2 new titles detected, the latest 2 days ago."),
+      row.getByText("4 titles detected, the latest 3 days ago"),
     ).toBeVisible();
+    await expect
+      .poll(previewOrder)
+      .toEqual(orderedTitles([second, third, fourth, fromRemovedList]));
+    await page.getByRole("button", { name: "Remove Other films" }).click();
+    await expect
+      .poll(previewOrder)
+      .toEqual(orderedTitles([second, third, fourth]));
+    await row.getByLabel("Sort order").click();
+    await page
+      .getByRole("option", { name: "Release Date (Newest First)" })
+      .click();
+    await expect
+      .poll(previewOrder)
+      .toEqual(orderedTitles([fourth, second, third]));
 
-    await toggle.click();
+    await row
+      .getByRole("button", { name: "Settings for Stremlist New titles" })
+      .click();
+    await row.getByLabel("Catalog title").fill("Recent releases");
+    await row.getByLabel("Show", { exact: true }).click();
+    await page.getByRole("option", { name: "Movies only" }).click();
+    await row
+      .getByRole("button", { name: "Move down, Recent releases" })
+      .click();
+    await row.getByRole("button", { name: "Filters & extra catalogs" }).click();
+    await row.getByLabel("Minimum IMDb rating").click();
+    await page.getByRole("option", { name: "8 and above" }).click();
+    await expect.poll(previewOrder).toEqual(orderedTitles([fourth, third]));
+    await row.getByRole("checkbox", { name: "90 min or less" }).check();
+
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await page.reload();
-    await expect(toggle).toBeChecked();
+    await expect(add).toHaveCount(0);
+    await expect(
+      row.getByText("Recent releases", { exact: true }),
+    ).toBeVisible();
+    await expect(row.getByLabel("Sort order")).toHaveText(
+      "Release Date (Newest First)",
+    );
 
     const manifest = await getManifest(accountId);
-    expect(manifest.catalogs[0]).toMatchObject({ id: "new-titles-movie" });
+    expect(manifest.catalogs.map(({ id }) => id)).toEqual([
+      catalogId,
+      "new-titles-movie",
+      "new-titles-movie--short",
+    ]);
+    expect(manifest.catalogs[1].name).toBe("Recent releases");
     const catalog = await getCatalog(accountId, "movie", "new-titles-movie");
-    expect(ids(catalog.metas)).toEqual([third.id, second.id]);
+    expect(ids(catalog.metas)).toEqual([fourth.id, third.id]);
     expect(catalog.metas[0].description).toMatch(
       /^Detected by Stremlist on \d{1,2} \w{3} \d{4} in Release QA\./,
     );
+    expect(
+      ids(
+        (await getCatalog(accountId, "movie", "new-titles-movie--short")).metas,
+      ),
+    ).toEqual([fourth.id]);
 
     await page.getByRole("button", { name: "I'll reinstall myself" }).click();
     await page.getByRole("button", { name: "I did it" }).click();
     await expect(page.getByRole("button", { name: "I did it" })).toHaveCount(0);
 
-    await toggle.click();
+    await row.getByRole("button", { name: "Remove Recent releases" }).click();
+    await expect(add).toBeVisible();
     await expect(
       page.getByText("These changes need a reinstall.", { exact: true }),
     ).toBeVisible();

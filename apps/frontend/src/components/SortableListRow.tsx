@@ -1,5 +1,4 @@
 import { use, useId, useState } from "react";
-import { flushSync } from "react-dom";
 import {
   SORT_OPTIONS,
   DISPLAY_MODE_OPTIONS,
@@ -18,15 +17,7 @@ import {
 import type { PosterSource } from "@stremlist/shared/poster";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import {
-  ArrowDown,
-  ArrowUp,
-  ExternalLink,
-  Eye,
-  GripVertical,
-  Settings2,
-  X,
-} from "lucide-react";
+import { ExternalLink, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
@@ -38,10 +29,10 @@ import CatalogFilterSettings from "./CatalogFilterSettings";
 import MergedSources from "./MergedSources";
 import type { MergeControls } from "./MergedSources";
 import CatalogPreview from "./CatalogPreview";
+import { CatalogOrderControls, RowActions } from "./ListRowParts";
 import { ListSyncLine, ListSyncNotice } from "./ListSyncStatus";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,11 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 /** One List of the configure page: summary row, then its settings. */
 export default function SortableListRow({
@@ -243,45 +229,20 @@ export default function SortableListRow({
               ))}
             </SelectContent>
           </Select>
-          {(
-            [
-              [
-                previewOpen,
-                setPreviewOpen,
-                previewId,
-                "Preview",
-                "Preview",
-                Eye,
-              ],
-              [open, setOpen, panelId, "Settings", "Settings for", Settings2],
-            ] as const
-          ).map(([expanded, setExpanded, controls, tooltip, action, Icon]) => (
-            <Tooltip key={tooltip} delayDuration={400}>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="disclosure"
-                  size="icon-round"
-                  aria-expanded={expanded}
-                  aria-controls={controls}
-                  aria-label={`${action} ${title}`}
-                  onClick={() => setExpanded((current) => !current)}
-                >
-                  <Icon className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent sideOffset={6}>{tooltip}</TooltipContent>
-            </Tooltip>
-          ))}
-          <Button
-            type="button"
-            variant="ghost-danger"
-            size="icon-round"
-            aria-label={`Remove ${title}`}
-            onClick={() => onRemove(list.localId)}
-          >
-            <X className="size-4" />
-          </Button>
+          <RowActions
+            title={title}
+            preview={{
+              expanded: previewOpen,
+              setExpanded: setPreviewOpen,
+              controls: previewId,
+            }}
+            settings={{
+              expanded: open,
+              setExpanded: setOpen,
+              controls: panelId,
+            }}
+            onRemove={() => onRemove(list.localId)}
+          />
         </div>
       </div>
 
@@ -403,50 +364,11 @@ export default function SortableListRow({
               )}
             </div>
 
-            <div className="mt-4 border-t border-black/5 pt-4">
-              <p className="mb-2 text-xs font-semibold text-black/60">
-                Catalog order
-              </p>
-              <div className="flex gap-2">
-                {(
-                  [
-                    ["up", "Move up", ArrowUp, onMoveUp],
-                    ["down", "Move down", ArrowDown, onMoveDown],
-                  ] as const
-                ).map(([direction, label, Icon, onMove]) => (
-                  <button
-                    key={direction}
-                    type="button"
-                    aria-label={`${label}, ${title}`}
-                    disabled={!onMove}
-                    onClick={
-                      onMove
-                        ? ({ currentTarget }) => {
-                            const top =
-                              currentTarget.getBoundingClientRect().top;
-                            flushSync(onMove);
-                            window.scrollBy({
-                              top:
-                                currentTarget.getBoundingClientRect().top - top,
-                              behavior: "instant",
-                            });
-                            const focusTarget = currentTarget.disabled
-                              ? currentTarget.parentElement?.querySelector<HTMLButtonElement>(
-                                  "button:enabled",
-                                )
-                              : currentTarget;
-                            focusTarget?.focus({ preventScroll: true });
-                          }
-                        : undefined
-                    }
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-black/5 px-4 text-sm font-semibold transition-[background-color,scale] duration-150 ease-out outline-none enabled:hover:bg-black/10 enabled:active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:active:scale-100"
-                  >
-                    <Icon className="size-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <CatalogOrderControls
+              title={title}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+            />
 
             {merge && (
               <MergedSources
@@ -470,7 +392,8 @@ export default function SortableListRow({
       <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
         <CollapsibleContent id={previewId}>
           <CatalogPreview
-            list={list}
+            subject={{ kind: "list", list }}
+            title={title}
             accountKey={accountKey}
             rpdbApiKey={rpdbApiKey}
             posterSource={posterSource}

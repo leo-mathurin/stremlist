@@ -28,7 +28,10 @@ import { z } from "zod";
 import { isProviderEnabled } from "../providers/registry";
 import type { AccountAccess, ListInput } from "./accounts";
 import { withAvailableGenres } from "./catalog-genres";
-import { catalogSettingsSchema } from "./catalog-settings";
+import {
+  catalogSettingsSchema,
+  newTitlesSettingsSchema,
+} from "./catalog-settings";
 import { listConnections } from "./connections";
 import { getNewTitlesSummary } from "./detections";
 import { normalizeImdbUserId } from "./imdb-scraper";
@@ -89,7 +92,12 @@ export const configBody = z.object({
   posterSource: z.enum(POSTER_SOURCES).optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
-  newTitles: z.object({ enabled: z.boolean() }).optional(),
+  newTitles: z
+    .object({
+      enabled: z.boolean(),
+      settings: newTitlesSettingsSchema.optional(),
+    })
+    .optional(),
 });
 
 /**

@@ -64,10 +64,12 @@ export default function CatalogFilterSettings({
   value,
   genres,
   onChange,
+  searchable = true,
 }: {
   value: CatalogSettings;
   genres: string[];
   onChange: (settings: CatalogSettings) => void;
+  searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -125,8 +127,9 @@ export default function CatalogFilterSettings({
           >
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
-                All selected filters apply together, including in search. Use
-                the sort menu of this list to order the results.
+                All selected filters apply together
+                {searchable ? ", including in search" : ""}. Use the sort menu
+                of this list to order the results.
               </p>
               {activeFilters > 0 && (
                 <Button

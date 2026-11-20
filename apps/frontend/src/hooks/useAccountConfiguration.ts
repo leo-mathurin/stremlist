@@ -8,10 +8,7 @@ import {
 import { toast } from "sonner";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
 import type { PosterSource } from "@stremlist/shared/poster";
-import {
-  DEFAULT_POSTER_SOURCE,
-  isPosterSource,
-} from "@stremlist/shared/poster";
+import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
@@ -43,6 +40,7 @@ import {
 } from "../lib/connections";
 import { rowsFromLists } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { NEW_TITLES_OFF, newTitlesFromAnswer } from "../lib/new-titles";
 import { buildAddonUrls } from "../lib/list-sources";
 import { ACTION_PROVIDERS } from "../lib/provider-groups";
 import { useConnectionSources } from "./useConnectionSources";
@@ -79,18 +77,13 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
-function keptPosterSource(draft: AccountForm) {
-  if (isPosterSource(draft.posterSource)) return draft.posterSource;
-  return draft.rpdbApiKey.trim() ? "rpdb" : DEFAULT_POSTER_SOURCE;
-}
-
 const EMPTY_FORM: AccountForm = {
   lists: [],
   rpdbApiKey: "",
   posterSource: DEFAULT_POSTER_SOURCE,
   actionsEnabled: false,
   actions: { order: [], selected: [] },
-  newTitlesEnabled: false,
+  newTitles: NEW_TITLES_OFF,
 };
 
 function reconcileSavedActions(saved: AccountForm, capable: ProviderId[]) {
@@ -190,7 +183,7 @@ export function useAccountConfiguration(
 ) {
   const { onAccountCreated } = options;
   const editor = useListEditor();
-  const { lists, setLists } = editor;
+  const { lists, newTitles, setLists, resetRows } = editor;
   const [rpdbApiKey, setRpdbApiKey] = useState("");
   const [posterSource, setPosterSource] = useState<PosterSource>(
     DEFAULT_POSTER_SOURCE,
@@ -215,9 +208,9 @@ export function useAccountConfiguration(
     order: [],
     selected: [],
   });
-  const [newTitlesEnabled, setNewTitlesEnabled] = useState(false);
   const [newTitlesSummary, setNewTitlesSummary] =
     useState<NewTitlesSummary | null>(null);
+  const [newTitlesRevision, setNewTitlesRevision] = useState(0);
   const [status, setStatus] = useState<
     "loading" | "ready" | "notFound" | "error"
   >(accountKey ? "loading" : "ready");
@@ -248,7 +241,7 @@ export function useAccountConfiguration(
     posterSource,
     actionsEnabled,
     actions,
-    newTitlesEnabled,
+    newTitles,
   };
   const [savedForm, setSavedForm] = useState<AccountForm | null>(null);
   const [shownKey, setShownKey] = useState<string | null | undefined>(
@@ -262,10 +255,9 @@ export function useAccountConfiguration(
       setSavedForm(EMPTY_FORM);
       const draft = readDraft(null);
       if (draft) {
-        setLists(draft.lists);
+        resetRows(draft.lists, draft.newTitles);
         setRpdbApiKey(draft.rpdbApiKey);
-        setPosterSource(keptPosterSource(draft));
-        setNewTitlesEnabled(draft.newTitlesEnabled);
+        setPosterSource(draft.posterSource);
       }
       setStatus("ready");
     } else if (accountKey !== createdKey) {
@@ -331,13 +323,9 @@ export function useAccountConfiguration(
           posterSource: data.posterSource ?? DEFAULT_POSTER_SOURCE,
           actionsEnabled: data.actions.enabled,
           actions: saved,
-          newTitlesEnabled: data.newTitles.enabled,
+          newTitles: newTitlesFromAnswer(data.newTitles),
         };
-        const kept = data.accountId ? takeDraft(data.accountId) : null;
-        const draft = kept && {
-          ...kept,
-          posterSource: keptPosterSource(kept),
-        };
+        const draft = data.accountId ? takeDraft(data.accountId) : null;
         const restored =
           draft && hasUnsavedChanges(storedForm, draft, data.access)
             ? {
@@ -351,7 +339,7 @@ export function useAccountConfiguration(
             : null;
         const shown = restored ?? storedForm;
         setSavedForm(storedForm);
-        setLists(shown.lists);
+        resetRows(shown.lists, shown.newTitles);
         setAccess(data.access);
         setAccountId(data.accountId);
         setLoadedStremio(data.stremio);
@@ -359,7 +347,6 @@ export function useAccountConfiguration(
         setPosterSource(shown.posterSource);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
-        setNewTitlesEnabled(shown.newTitlesEnabled);
         applyServerState(data);
         if (restored) {
           toast.info("Your unsaved changes are back. Save to apply them.", {
@@ -368,7 +355,7 @@ export function useAccountConfiguration(
         }
         onBaselineLoaded(accountKey, data.lists, {
           rows,
-          newTitles: data.newTitles.enabled,
+          newTitles: storedForm.newTitles,
           actionsLive: data.actions.enabled && saved.selected.length > 0,
         });
         setStatus("ready");
@@ -387,7 +374,7 @@ export function useAccountConfiguration(
     resetBaseline,
     onBaselineLoaded,
     applyServerState,
-    setLists,
+    resetRows,
   ]);
 
   const actionsLive =
@@ -397,7 +384,7 @@ export function useAccountConfiguration(
       ? "none"
       : baseline.stateFor({
           rows: lists,
-          newTitles: newTitlesEnabled,
+          newTitles,
           actionsLive,
         });
 
@@ -449,7 +436,7 @@ export function useAccountConfiguration(
       accountId: body.accountId,
       setup: {
         rows: savedRows,
-        newTitles: submitted.newTitlesEnabled,
+        newTitles: submitted.newTitles,
         actionsLive: false,
       },
     };
@@ -470,10 +457,11 @@ export function useAccountConfiguration(
     setSavedForm({ ...submitted, lists: savedRows });
     const { needsReinstall } = baseline.onSaved(accountKey, body.lists, {
       rows: savedRows,
-      newTitles: submitted.newTitlesEnabled,
+      newTitles: submitted.newTitles,
       actionsLive,
     });
     setNewTitlesSummary(body.newTitles);
+    setNewTitlesRevision((revision) => revision + 1);
     if (unsaved) {
       toast.success(
         "Saved the submitted settings. You have unsaved changes: save again to apply them.",
@@ -545,7 +533,10 @@ export function useAccountConfiguration(
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
       if ("syncStatus" in body) applySync(body);
-      if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
+      if ("newTitles" in body) {
+        setNewTitlesSummary(body.newTitles);
+        setNewTitlesRevision((revision) => revision + 1);
+      }
       if ("lists" in body) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -615,6 +606,7 @@ export function useAccountConfiguration(
     setConnecting(provider);
     try {
       await deleteConnection(accountId, provider, label);
+      setNewTitlesRevision((revision) => revision + 1);
       dropConnection(provider);
       const capable = actionCapableProviders(
         connections.filter((connection) => connection.provider !== provider),
@@ -691,9 +683,8 @@ export function useAccountConfiguration(
         [order[index], order[target]] = [order[target], order[index]];
         return { ...current, order };
       }),
-    newTitlesEnabled,
-    setNewTitlesEnabled,
     newTitlesSummary,
+    newTitlesRevision,
     status,
     saving,
     refreshing,

@@ -97,6 +97,8 @@ function replaceAccountConfig(args: RpcArgs) {
     args.p_action_providers ?? account.action_providers;
   account.new_titles_catalog =
     args.p_new_titles_catalog ?? account.new_titles_catalog;
+  account.new_titles_settings =
+    args.p_new_titles_settings ?? account.new_titles_settings;
   account.poster_source = args.p_poster_source ?? account.poster_source;
 
   return {
@@ -128,6 +130,7 @@ function createAccountWithConfig(args: RpcArgs) {
     p_actions_enabled: null,
     p_action_providers: null,
     p_new_titles_catalog: args.p_new_titles_catalog,
+    p_new_titles_settings: args.p_new_titles_settings,
     p_poster_source: args.p_poster_source,
   });
   if (saved.error) {
