@@ -448,7 +448,7 @@ export function apiAt(baseUrl: string) {
 
 export type Api = ReturnType<typeof apiAt>;
 
-/** The Playwright backend (BACKEND_URL). */
+/** The integration backend (BACKEND_URL). */
 export const api = apiAt(BACKEND_URL);
 
 export const getBaseManifest = () => api.getBaseManifest();

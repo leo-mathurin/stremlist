@@ -181,39 +181,37 @@ jobs:
           fi
 
   e2e:
-    name: E2E (${{ matrix.suite }})
+    name: E2E (${{ matrix.suite }} ${{ matrix.shard }}/2)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      # One suite failing must not hide the result of the other.
       fail-fast: false
       matrix:
-        suite: [playwright, toolkit]
+        suite: [integration, toolkit]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup
         with:
-          supabase: true
+          supabase: ${{ matrix.suite == 'integration' }}
 
-      - name: Cache Playwright browsers
+      - name: Cache Chromium
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: e2e-chromium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/e2e/package.json') }}
 
       - name: Install dependencies and Chromium
         id: install
         background: true
         run: |
           bun ci
-          (cd apps/e2e && bunx playwright install --with-deps chromium)
-          if [ "${{ matrix.suite }}" = toolkit ]; then
-            bun run --cwd apps/e2e e2e-web install chromium --with-deps
-          fi
+          bun run --cwd apps/e2e e2e-web install chromium --with-deps
 
       - name: Start local R2-compatible store
+        if: matrix.suite == 'integration'
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \
             -p 127.0.0.1:7431:9000 \
@@ -222,33 +220,29 @@ jobs:
             rustfs/rustfs:1.0.1 /data
 
       - name: Start local Supabase (db + REST only)
+        if: matrix.suite == 'integration'
         run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
       - wait: install
 
-      - name: Run tester-army toolkit
+      - name: Replay recorded UI tests
         if: matrix.suite == 'toolkit'
-        run: bun run test:toolkit:replay
+        run: bun run test:toolkit:replay --shard ${{ matrix.shard }}/2
 
-      - name: Run E2E tests
-        if: matrix.suite == 'playwright'
-        run: bun run --filter @stremlist/e2e test:e2e
+      - name: Run E2E integration tests
+        if: matrix.suite == 'integration'
+        run: bun run --filter @stremlist/e2e test:e2e --shard ${{ matrix.shard }}/2
 
-      - name: Upload toolkit report
-        if: failure() && matrix.suite == 'toolkit'
+      - name: Upload E2E report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toolkit-report
+          name: e2e-${{ matrix.suite }}-${{ matrix.shard }}
           include-hidden-files: true
-          path: apps/e2e/.e2e
-          retention-days: 7
-
-      - name: Upload Playwright report
-        if: failure() && matrix.suite == 'playwright'
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: apps/e2e/playwright-report
+          path: |
+            ${{ matrix.suite == 'toolkit' && 'apps/e2e/.e2e/report.json' || 'apps/e2e/test-results/integration/report.json' }}
+            ${{ matrix.suite == 'toolkit' && 'apps/e2e/.e2e/artifacts' || 'apps/e2e/test-results/integration/artifacts' }}
+          if-no-files-found: ignore
           retention-days: 7
 
   version-bump:

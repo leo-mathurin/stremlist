@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import type {
   ConfigListInput,
   NewTitlesSummary,
@@ -185,7 +186,7 @@ const EMPTY_SUMMARY = { detected: 0, latestDetectedAt: null, waitingLists: 0 };
 
 test(
   "the first refresh is the Baseline; later additions show once, newest first",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId } = await seedDetectionAccount([
       { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
@@ -230,7 +231,7 @@ test(
 
 test(
   "a failed refresh between two complete ones creates no removal and no new title",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId } = await seedDetectionAccount([
       { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
@@ -257,7 +258,7 @@ test(
 
 test(
   "an Unresolved entry does not block the Baseline or the detection of others",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId } = await seedDetectionAccount([
       { provider: "trakt", sourceRef: TRAKT_REF, title: "QA Trakt picks" },
@@ -294,7 +295,7 @@ test(
 
 test(
   "a read cut short by the page cap is served but never compared",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedDetectionAccount([
       { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
@@ -357,7 +358,7 @@ test(
 
 test(
   "a Title that leaves and comes back keeps its first detection, also when its List is removed and added again",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId } = await seedDetectionAccount([
       { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
@@ -421,7 +422,7 @@ test(
 
 test(
   "series have their own New titles catalog, without search and paged with skip",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId } = await seedDetectionAccount([
       {
@@ -455,7 +456,7 @@ test(
 
 test(
   "the private copy of a Legacy alias install keeps the setting and starts its own Baseline",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const alias = "ur9999999999203";
     const legacyId = await seedAccount({
@@ -509,7 +510,7 @@ test(
 
 test(
   "a disconnect forgets only the history that the Connection could read",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId, listIds } = await seedDetectionAccount([
       { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
@@ -578,7 +579,7 @@ test(
 
 test(
   "Legacy alias requests never show Lists that need a Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const alias = "ur9999999999202";
     const accountId = await seedAccount({
@@ -619,7 +620,7 @@ test(
 
 test(
   "a merged List detects in each Source list, shows a Title once and waits for each Baseline",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount({ newTitlesCatalog: true });
     const listId = await seedList(accountId, {
@@ -690,7 +691,7 @@ test(
 
 test(
   "the built-in list previews and saves its release order, filters, and position",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     const [first, second, third, fourth, fromRemovedList] = CATALOG_TITLES;

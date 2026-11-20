@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import type {
   ConfigListInput,
   StremioResource,
@@ -56,16 +57,20 @@ const failedLink = (reason: string, provider = "imdb") => ({
 test.beforeEach(resetDb);
 
 test.describe("manifest", () => {
-  test("base manifest requires configuration", { tag: "@local" }, async () => {
-    const manifest = await getBaseManifest();
-    expect(manifest.behaviorHints?.configurationRequired).toBe(true);
-    expect(manifest.behaviorHints?.configurable).toBe(true);
-    expect(manifest.name).toBe("Stremlist");
-  });
+  test(
+    "base manifest requires configuration",
+    { tags: ["local"] },
+    async () => {
+      const manifest = await getBaseManifest();
+      expect(manifest.behaviorHints?.configurationRequired).toBe(true);
+      expect(manifest.behaviorHints?.configurable).toBe(true);
+      expect(manifest.name).toBe("Stremlist");
+    },
+  );
 
   test(
     "first Legacy alias manifest bootstraps the install",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       const manifest = await getManifest(PUBLIC_USER);
       expect(manifest.id).toBe(`com.stremlist.${PUBLIC_USER}`);
@@ -98,7 +103,7 @@ test.describe("manifest", () => {
 
   test(
     "a private Addon URL manifest does not expose the Account ID",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       const { accountId } = await seedImdbAccount();
       const manifest = await getManifest(accountId);
@@ -112,7 +117,7 @@ test.describe("manifest", () => {
 
   test(
     "display mode controls emitted catalogs",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       const saved = await postConfig(accountId, [
@@ -127,14 +132,14 @@ test.describe("manifest", () => {
 
   test(
     "rejects malformed installation IDs",
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ request }) => {
       for (const key of [MALFORMED_USER, "sl_tooShort"]) {
         const response = await request.get(
           `${BACKEND_URL}/${key}/manifest.json`,
         );
         expect(response.status()).toBe(404);
-        await expect(response.json()).resolves.toMatchObject({
+        expect(await response.json()).toMatchObject({
           behaviorHints: { configurable: true, configurationRequired: true },
         });
       }
@@ -145,7 +150,7 @@ test.describe("manifest", () => {
 test.describe("catalogs", () => {
   test(
     "movie catalog serves the live IMDb watchlist",
-    { tag: "@live-smoke" },
+    { tags: ["live-smoke"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       const catalogId = `wl-${listId}-movie`;
@@ -163,7 +168,7 @@ test.describe("catalogs", () => {
 
   test(
     "every sort option orders the catalog correctly",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       const catalogId = `wl-${listId}-movie`;
@@ -219,7 +224,7 @@ test.describe("catalogs", () => {
 
   test(
     "ls list source serves a public IMDb list",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       expect(
@@ -240,7 +245,7 @@ test.describe("catalogs", () => {
 
   test(
     "built-in chart catalog serves live chart data",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId } = await seedImdbAccount();
       await postConfig(accountId, [
@@ -268,7 +273,7 @@ test.describe("catalogs", () => {
     },
   );
 
-  test("RPDB key rewrites posters", { tag: "@live-regression" }, async () => {
+  test("RPDB key rewrites posters", { tags: ["live-regression"] }, async () => {
     const { accountId, listId } = await seedImdbAccount();
     await postConfig(
       accountId,
@@ -290,7 +295,7 @@ test.describe("catalogs", () => {
 
   test(
     "unknown watchlist degrades to an informational card, not a 500",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount(UNKNOWN_USER);
       const { status, metas } = await getCatalog(
@@ -307,7 +312,7 @@ test.describe("catalogs", () => {
 
   test(
     "private watchlist degrades to an informational card",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount(PRIVATE_USER);
       const { status, metas } = await getCatalog(
@@ -324,7 +329,7 @@ test.describe("catalogs", () => {
 
   test(
     "malformed catalog requests return empty catalogs",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       const { accountId } = await seedImdbAccount();
       const unknownCatalog = await getCatalog(
@@ -347,7 +352,7 @@ test.describe("catalogs", () => {
 
   test(
     "removing a List deletes cached generations and leaves a tombstone",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId: removed } = await seedImdbAccount();
       const created = await postConfig(accountId, [
@@ -382,7 +387,7 @@ test.describe("catalogs", () => {
 test.describe("meta", () => {
   test(
     "serves cached meta and falls back to null on misses",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       const catalogId = `wl-${listId}-movie`;
@@ -404,7 +409,7 @@ test.describe("meta", () => {
 test.describe("link resolution", () => {
   test(
     "resolves public, unknown, and p-handle IMDb links",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       expect(
         await resolveLink(`https://www.imdb.com/user/${PUBLIC_USER}/watchlist`),
@@ -439,7 +444,7 @@ test.describe("link resolution", () => {
     },
   );
 
-  test("reports private sources", { tag: "@live-regression" }, async () => {
+  test("reports private sources", { tags: ["live-regression"] }, async () => {
     expect(await resolveLink(PRIVATE_USER)).toEqual(failedLink("private"));
     expect(await resolveLink(PRIVATE_P_HANDLE)).toEqual(failedLink("private"));
     if (PRIVATE_LIST) {
@@ -449,7 +454,7 @@ test.describe("link resolution", () => {
 
   test(
     "unrecognized links and charts resolve without a Provider call",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       expect(await resolveLink("banana bread")).toEqual({
         ok: false,
@@ -472,7 +477,7 @@ test.describe("link resolution", () => {
 });
 
 test.describe("config API", () => {
-  test("rejects invalid configurations", { tag: "@local" }, async () => {
+  test("rejects invalid configurations", { tags: ["local"] }, async () => {
     const { accountId } = await seedImdbAccount();
     const valid = listInput("imdb", PUBLIC_USER);
     const status = async (lists: ConfigListInput[]) =>
@@ -504,7 +509,7 @@ test.describe("config API", () => {
 
   test(
     "a new Account starts from its first Lists",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       const created = await createAccount(
         [listInput("imdb", "imdb:box-office", { displayMode: "movie" })],
@@ -530,7 +535,7 @@ test.describe("config API", () => {
 
   test(
     "404s for Addon URLs that never installed",
-    { tag: "@local" },
+    { tags: ["local"] },
     async () => {
       expect((await getConfig(PUBLIC_USER)).status).toBe(404);
       expect((await getConfig("sl_0000000000000000000000")).status).toBe(404);
@@ -541,7 +546,7 @@ test.describe("config API", () => {
 test.describe("refresh", () => {
   test(
     "refreshes from live IMDb and then throttles",
-    { tag: "@live-regression" },
+    { tags: ["live-regression"] },
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       await clearRefreshCooldown(accountId);
@@ -561,26 +566,34 @@ test.describe("refresh", () => {
 });
 
 test.describe("misc endpoints", () => {
-  test("health, stats, and configure redirect", { tag: "@local" }, async () => {
-    const health = await fetch(`${BACKEND_URL}/health`);
-    expect(health.status).toBe(200);
-    expect(field(await health.json(), "database")).toBe("up");
+  test(
+    "health, stats, and configure redirect",
+    { tags: ["local"] },
+    async () => {
+      const health = await fetch(`${BACKEND_URL}/health`);
+      expect(health.status).toBe(200);
+      expect(field(await health.json(), "database")).toBe("up");
 
-    const { accountId } = await seedImdbAccount();
-    await bootstrapLegacy(PUBLIC_USER);
-    const stats = await fetch(`${BACKEND_URL}/stats`);
-    expect(
-      parsed(field(await stats.json(), "activeUsers"), isNumber, "activeUsers"),
-    ).toBeGreaterThanOrEqual(2);
+      const { accountId } = await seedImdbAccount();
+      await bootstrapLegacy(PUBLIC_USER);
+      const stats = await fetch(`${BACKEND_URL}/stats`);
+      expect(
+        parsed(
+          field(await stats.json(), "activeUsers"),
+          isNumber,
+          "activeUsers",
+        ),
+      ).toBeGreaterThanOrEqual(2);
 
-    for (const key of [accountId, PUBLIC_USER]) {
-      const configure = await fetch(`${BACKEND_URL}/${key}/configure`, {
-        redirect: "manual",
-      });
-      expect(configure.status).toBe(302);
-      expect(configure.headers.get("location")).toBe(
-        `${FRONTEND_URL}/configure?account=${key}`,
-      );
-    }
-  });
+      for (const key of [accountId, PUBLIC_USER]) {
+        const configure = await fetch(`${BACKEND_URL}/${key}/configure`, {
+          redirect: "manual",
+        });
+        expect(configure.status).toBe(302);
+        expect(configure.headers.get("location")).toBe(
+          `${FRONTEND_URL}/configure?account=${key}`,
+        );
+      }
+    },
+  );
 });

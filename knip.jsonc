@@ -26,9 +26,12 @@
       "ignore": ["src/database.types.ts"],
     },
     "apps/e2e": {
-      // The e2e CLI discovers toolkit tests; fixture backends load preloads by path.
+      // The e2e CLI discovers specs; app commands and fixture backends load files by path.
       "entry": [
         "e2e.config.ts",
+        "integration.config.ts",
+        "integration-app.ts",
+        "test/**/*.e2e.ts",
         "toolkit/**/*.e2e.ts",
         "helpers/provider.fixture.ts",
         "helpers/provider-transport.ts",

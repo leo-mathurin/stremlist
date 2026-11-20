@@ -4,7 +4,7 @@ Two suites cover the frontend and addon:
 
 - **Toolkit:** browser journeys with intercepted API responses, plus recorded AI
   actions replayed without credentials in CI. No database is needed.
-- **Playwright:** real backend, Supabase and S3-compatible storage, with controlled
+- **Integration:** real backend, Supabase and S3-compatible storage, with controlled
   Provider fixtures or live IMDb and hosted Stremio Web. Runs on ports 7301/7302.
 
 ## Toolkit
@@ -24,7 +24,7 @@ e2e-chatgpt-session bun run test:toolkit:record
 The toolkit starts Vite on `127.0.0.1:4311`; requests to `127.0.0.1:4314`
 are intercepted. Configuration lives in `e2e.config.ts`, journeys in `toolkit/`,
 and shared routes/fixtures in `toolkit/config.fixture.ts`. Interception verifies
-UI behavior and requests; Playwright verifies handlers and storage.
+UI behavior and requests; Integration verifies handlers and storage.
 
 ### Cache rules
 
@@ -37,7 +37,7 @@ UI behavior and requests; Playwright verifies handlers and storage.
   run `bun run test:toolkit:replay`. CI uses this same strict, read-only replay
   and refuses model calls, new recordings and stale/missing cache entries.
 - `bun run --cwd apps/e2e test:toolkit:check` checks the last report and recordings;
-  add `--prune` after a full replay to delete orphaned entries.
+  add `--prune` to run a fresh full replay and delete orphaned entries only if every test passes.
 - AI goals use unique accessible names. Configure-page goals call
   `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
   `holdToasts`; a fake timer in the page stops only the timer that closes a
@@ -47,7 +47,7 @@ UI behavior and requests; Playwright verifies handlers and storage.
 
 ## Running locally
 
-Playwright requires Docker, the Supabase CLI and these disposable services:
+e2e integration requires Docker, the Supabase CLI and these disposable services:
 
 ```sh
 supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
@@ -59,9 +59,9 @@ docker run --rm -d --name stremlist-e2e-r2 \
   rustfs/rustfs:1.0.1 /data
 
 bun run test:e2e
-bun run --filter @stremlist/e2e test:e2e --project=local
-bun run --filter @stremlist/e2e test:e2e --project=live-smoke
-bun run --filter @stremlist/e2e test:e2e --project=live-regression
+bun run --filter @stremlist/e2e test:e2e --tag local
+bun run --filter @stremlist/e2e test:e2e --tag live-smoke
+bun run --filter @stremlist/e2e test:e2e --tag live-regression
 ```
 
 Tests delete fixture Legacy alias Accounts and Accounts created since the run
@@ -80,7 +80,7 @@ Supabase URLs are rejected unless explicitly enabled below.
 | `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2` / `E2E_IMDB_LIST_ID` | Public live fixtures                                             |
 | `E2E_PRIVATE_IMDB_USER_ID` / `E2E_PRIVATE_IMDB_LIST_ID`        | Private fixtures (the list ID enables the private-list case)     |
 
-`playwright.config.ts` defines projects; `test/` contains coverage and assertions.
+`integration.config.ts` defines the integration runner; `test/` contains coverage and assertions.
 Provider specs use real adapters with fixture transports and reject unknown
 outbound destinations. Live projects depend on IMDb and web.stremio.com. Actual
 newsletter delivery, authenticated RPDB delivery, playback and desktop protocol

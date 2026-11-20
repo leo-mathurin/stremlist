@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { FRONTEND_URL } from "../env.js";
 import type { Api } from "../helpers/api.js";
@@ -137,7 +138,7 @@ async function seedEveryProvider() {
 
 test(
   "Stremio reads the Catalogs, meta and streams of a List of every Provider",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId, lists } = await seedEveryProvider();
     for (const list of lists) {
@@ -173,7 +174,7 @@ const HOME_LINKS: [ProviderId, string, string][] = [
 for (const [provider, link, sourceRef] of HOME_LINKS) {
   test(
     `a ${provider} link pasted on Home is saved and served to Stremio`,
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ page }) => {
       await routePageTo(page, backend.url);
       await page.goto(FRONTEND_URL);
@@ -213,9 +214,8 @@ for (const [provider, link, sourceRef] of HOME_LINKS) {
 
 test(
   "Stremio Web shows the Catalogs of every Provider",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
-    test.setTimeout(300_000);
     const { accountId, lists } = await seedEveryProvider();
     const manifestUrl = `${backend.url}/${accountId}/manifest.json`;
     const catalogs = [];

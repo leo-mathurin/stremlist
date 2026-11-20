@@ -50,9 +50,8 @@ lerna-debug.log*
 # Supabase CLI local state
 supabase/.temp/
 
-# Playwright
+# Test artifacts
 test-results/
-playwright-report/
 
 # tester-army/e2e reports are local; verified action recordings are shared.
 **/.e2e/*

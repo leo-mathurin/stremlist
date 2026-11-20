@@ -1,6 +1,6 @@
-import type { Page } from "@playwright/test";
-import { expect } from "@playwright/test";
-import { STREMIO_WEB_URL } from "../env.js";
+import { routeAddonRequests, type Page } from "../integration-browser.js";
+import { expect } from "../integration-expect.js";
+import { BACKEND_URL, STREMIO_WEB_URL } from "../env.js";
 
 export function addonsDeepLink(manifestUrl: string) {
   return `${STREMIO_WEB_URL}/#/addons?addon=${encodeURIComponent(manifestUrl)}`;
@@ -30,6 +30,8 @@ export async function dismissDesktopAppPrompt(page: Page) {
  * Resolves once the modal is gone and the addon shows as installed.
  */
 export async function installAddon(page: Page, manifestUrl: string) {
+  const origin = new URL(manifestUrl).origin;
+  if (origin !== BACKEND_URL) await routeAddonRequests(page.context(), origin);
   await page.goto(addonsDeepLink(manifestUrl));
   await dismissDesktopAppPrompt(page);
   const installButton = page.getByText("Install", { exact: true }).last();

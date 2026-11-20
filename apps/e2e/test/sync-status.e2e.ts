@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog.fixture.js";
 import {
@@ -44,7 +45,7 @@ test.beforeEach(resetDb);
 
 test(
   "a failed refresh keeps the last success, and the page explains it after a reload",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const {
       accountId,
@@ -85,7 +86,7 @@ test(
     expect(
       Date.parse(present(row.failing_since, "failing since")),
     ).toBeGreaterThan(lastSuccess.getTime());
-    expect(row.last_attempt_at).toBe(row.failing_since);
+    expect(row.last_attempt_at).toEqual(row.failing_since);
 
     const notice =
       "Trakt is temporarily unavailable. Please try again later. Stremio shows the titles from the last refresh, 1 hour ago.";
@@ -101,7 +102,7 @@ test(
 
 test(
   "a Connection the Provider refuses is marked, and public Lists do not fail with it",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const {
       accountId,
@@ -161,7 +162,7 @@ test(
 
 test(
   "a Legacy alias sees the sync status of its public Lists only, and an unknown Addon URL none",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount({
       legacyImdbUserId: CATALOG_FIXTURE_USER,
@@ -198,7 +199,7 @@ test(
 
 test(
   "a List cached before sync statuses existed shows its last refresh from the cache",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const {
       accountId,
@@ -220,7 +221,7 @@ test(
 
 test(
   "a List added on the page records its first refresh, and the page shows it without a reload",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const {
       accountId,

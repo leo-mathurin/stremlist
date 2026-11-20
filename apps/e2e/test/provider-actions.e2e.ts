@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import { listInput } from "../helpers/api.js";
 import {
@@ -28,7 +29,7 @@ test.beforeEach(async () => {
 
 test(
   "Actions in Stremio open a Stremlist page that changes the Trakt watchlist",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -44,11 +45,15 @@ test(
     );
     expect(saved.status).toBe(200);
     const manifest = await api.getManifest(accountId);
-    expect(manifest.resources).toContainEqual({
-      name: "stream",
-      types: ["movie", "series"],
-      idPrefixes: ["tt"],
-    });
+    expect(manifest.resources).toEqual(
+      expect.arrayContaining([
+        {
+          name: "stream",
+          types: ["movie", "series"],
+          idPrefixes: ["tt"],
+        },
+      ]),
+    );
 
     const streams = await api.getStreams(accountId, "movie", "tt0111161");
     const add = streams.body.streams.find((stream) =>
@@ -90,7 +95,7 @@ test(
 
 test(
   "every Trakt Action intent opens its page, writes Trakt and updates the entries",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount({ actions: ["trakt"] });
     await seedConnection(accountId, "trakt");
@@ -197,7 +202,7 @@ test(
 
 test(
   "Simkl and MDBList Actions write each Provider, and a rating goes to the chosen ones",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount({ actions: ["simkl", "mdblist"] });
     await seedConnection(accountId, "simkl");
@@ -284,7 +289,7 @@ test(
 
 test(
   "the kill switch stops every Provider request but keeps cached Catalogs",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount({ actions: ["trakt"] });
     await seedConnection(accountId, "trakt");
@@ -367,7 +372,7 @@ test(
 
 test(
   "concurrent Actions from separate backends preserve both membership changes",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ request }) => {
     const writer = await startFixtureBackend("./provider.fixture.ts");
     const reader = await startFixtureBackend("./provider.fixture.ts");

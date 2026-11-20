@@ -691,6 +691,7 @@ function letterboxd({ request, url }: FixtureRequest) {
   }
   if (
     url.pathname !== "/fixture_user/watchlist/" &&
+    !/^\/fixture_[a-f0-9]{12}\/watchlist\/$/u.test(url.pathname) &&
     url.pathname !== "/fixture_user/list/weekend/"
   ) {
     unsupported(request, "Unexpected Letterboxd page");

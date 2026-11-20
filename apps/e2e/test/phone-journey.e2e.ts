@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { emulatePhone, tapOn, test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { hasAccountId, ok } from "../helpers/api.js";
 import { configureUrl, saveButton, SAVE_NEW } from "../helpers/configure.js";
@@ -10,12 +11,7 @@ import { parsed } from "../helpers/json.js";
 import { routePageTo } from "../helpers/page-backend.js";
 import { addonsDeepLink } from "../helpers/stremio.js";
 
-test.use({
-  viewport: { width: 390, height: 844 },
-  deviceScaleFactor: 3,
-  isMobile: true,
-  hasTouch: true,
-});
+test.beforeEach(async ({ page }) => emulatePhone(page, 3));
 
 const TRAKT_LINK = "https://trakt.tv/users/fixture-user/watchlist";
 
@@ -41,7 +37,7 @@ async function expectNoSidewaysScroll(page: Page) {
 
 test(
   "on a phone, a link pasted on Home is saved, installs and survives a reload",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     await routePageTo(page, backend.url);
     await page.goto(FRONTEND_URL);
@@ -50,7 +46,7 @@ test(
     await expectNoSidewaysScroll(page);
 
     await field.fill(TRAKT_LINK);
-    await page.getByRole("button", { name: "Add this list" }).tap();
+    await tapOn(page, page.getByRole("button", { name: "Add this list" }));
     await expect(page).toHaveURL(`${FRONTEND_URL}/configure`);
     const save = saveButton(page, SAVE_NEW);
     await expect(save).toBeEnabled();
@@ -63,7 +59,7 @@ test(
       (res) =>
         res.url().endsWith("/accounts") && res.request().method() === "POST",
     );
-    await save.tap();
+    await tapOn(page, save);
     const response = await created;
     expect(response.status()).toBe(200);
     const { accountId } = parsed(

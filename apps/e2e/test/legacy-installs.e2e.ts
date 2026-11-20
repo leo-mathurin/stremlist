@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import {
   getConfig,
@@ -51,7 +52,7 @@ test.beforeEach(async () => {
 for (const [label, key] of LEGACY_KEYS) {
   test(
     `a v1 install keyed by ${label} serves Stremio and its configure page`,
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ request }) => {
       const { listId } = await seedLegacyInstall(key);
       const base = `${BACKEND_URL}/${encodeURIComponent(key)}`;
@@ -102,14 +103,14 @@ for (const [label, key] of LEGACY_KEYS) {
 
 test(
   "junk v1 keys are not found and create nothing",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ request }) => {
     for (const key of JUNK_KEYS) {
       const response = await request.get(
         `${BACKEND_URL}/${encodeURIComponent(key)}/manifest.json`,
       );
       expect(response.status(), key).toBe(404);
-      await expect(response.json()).resolves.toMatchObject({
+      expect(await response.json()).toMatchObject({
         behaviorHints: { configurationRequired: true },
       });
       expect(await getAccountByLegacyAlias(key), key).toBeNull();
@@ -131,7 +132,7 @@ for (const [label, key, link] of [
 ] as const) {
   test(
     `a v1 user who pastes their ${label} on Home lands on their install`,
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ page }) => {
       const { accountId, listId } = await seedLegacyInstall(key);
       let creates = 0;
@@ -165,7 +166,7 @@ for (const [label, key, link] of [
 
 test(
   "a v1 p. handle Addon URL pasted on Home opens its install",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const key = "p.stremlistE2eHandle01";
     await seedLegacyInstall(key);
