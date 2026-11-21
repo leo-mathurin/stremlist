@@ -278,6 +278,15 @@ jobs:
         if: steps.bump.outputs.bump != 'none'
         run: node .github/scripts/set-version.mjs "${{ steps.bump.outputs.new_version }}"
 
+      # One entry on the public changelog page for each release, written
+      # from the feat, fix and perf commits of the push.
+      - name: Add the changelog entry
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: node .github/scripts/update-changelog.mjs "${{ steps.bump.outputs.new_version }}"
+
       - name: Commit and push
         if: steps.bump.outputs.bump != 'none'
         env:
@@ -285,6 +294,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json packages/shared/src/constants.ts
+          git add package.json packages/shared/src/constants.ts apps/frontend/src/content/changelog.json
           git commit -m "chore(release): v${NEW} [skip ci]"
           git push origin HEAD:main

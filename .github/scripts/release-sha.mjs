@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
-const VERSION_FILES = ["package.json", "packages/shared/src/constants.ts"];
+const VERSION_FILES = [
+  "package.json",
+  "packages/shared/src/constants.ts",
+  "apps/frontend/src/content/changelog.json",
+];
 const VERSION_SUBJECT = /^chore\(release\): v\d+\.\d+\.\d+ \[skip ci\]$/;
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
