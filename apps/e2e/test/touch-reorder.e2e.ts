@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { CDPSession, Locator, Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { emulatePhone, tapOn, test } from "../integration-browser.js";
+import type { CDPSession, Locator, Page } from "../integration-browser.js";
 import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
@@ -11,11 +12,7 @@ import {
   savedLists,
 } from "../toolkit/config.fixture.js";
 
-test.use({
-  viewport: { width: 390, height: 844 },
-  isMobile: true,
-  hasTouch: true,
-});
+test.beforeEach(async ({ page }) => emulatePhone(page));
 
 function titles(page: Page) {
   return page.locator("[data-list-row] p[title]").allTextContents();
@@ -40,7 +37,7 @@ async function touch(
 
 test(
   "touch reorders without a long press, keeps scrolling outside the handle and saves positions",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const config = {
       ...configuration,
@@ -99,8 +96,7 @@ test(
       "Catalog 5",
     ];
     await expect.poll(() => titles(page)).toEqual(initial);
-    const start = await point(handle);
-    await page.touchscreen.tap(start.x, start.y);
+    await tapOn(page, handle);
     await expect(saveButton(page)).toBeDisabled();
 
     const session = await page.context().newCDPSession(page);

@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import type { WatchTrackingStatus } from "@stremlist/shared/watch-tracking";
 import {
   getWatchRows,
@@ -192,7 +193,7 @@ test.beforeEach(async () => {
 
 test(
   "a title that turns watched in Stremio is marked on Trakt and Simkl",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -284,7 +285,7 @@ test(
 
 test(
   "the sweep sends episodes that the trigger missed, and stops when turned off",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -345,7 +346,7 @@ test(
 
 test(
   "an episode that turns watched as the next one starts is sent to MDBList",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "mdblist");
@@ -399,7 +400,7 @@ test(
 
 test(
   "a manual mark in Stremio Web is sent a few seconds later",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -441,7 +442,7 @@ test(
 
 test(
   "Watch tracking needs a Stremio link and a connected Destination",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -466,7 +467,7 @@ test(
 
 test(
   "the configure page turns Watch tracking on and shows the last title",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -544,7 +545,7 @@ test(
 
 test(
   "Watch tracking asks for a Stremio link first",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -563,7 +564,7 @@ test(
 
 test(
   "a refused change puts the checkbox back and says why",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -599,7 +600,7 @@ test(
 
 test(
   "player events recover a missing cycle once and still wait for native watched status",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -658,7 +659,7 @@ test(
 
 test(
   "consented library additions use independent durable destinations, retry and keep history",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     for (const provider of ["trakt", "simkl", "mdblist"] as const)
@@ -766,8 +767,8 @@ test(
 
 test(
   "card A saves independent choices after explicit consent and confirms stop sharing",
-  { tag: "@local" },
-  async ({ page }, testInfo) => {
+  { tags: ["local"] },
+  async ({ page, app }) => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
     await seedConnection(accountId, "simkl");
@@ -826,7 +827,7 @@ test(
     ]);
     await page.setViewportSize({ width: 390, height: 844 });
     await section.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath("a-phone.png") });
+    await app.screenshot("watch-sharing-phone");
     await section
       .getByRole("button", { name: "Stop sharing", exact: true })
       .click();
@@ -847,7 +848,7 @@ test(
 
 test(
   "sharing can be stopped after the Stremio link is removed",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -893,7 +894,7 @@ test(
 
 test(
   "a Simkl title held by another worker waits without using a failure attempt",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     await seedConnection(accountId, "simkl");

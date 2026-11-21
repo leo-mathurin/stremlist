@@ -13,13 +13,13 @@ An Account refreshes its Lists and sees when Titles last loaded or why a Provide
 
 Open `/configure?account=...` or a Legacy alias link. Read the status beside each List. Choose `Refresh now`, wait through `Refresh in ...s`, or use the affected List's Connect again control. Opening Stremio also reads and refreshes stale Catalogs.
 
-## Driving it with toolkit and Playwright
+## Driving it with toolkit and e2e integration
 
 Preconditions: toolkit fixtures provide changing sync-status responses and a controlled clock where the existing spec needs one. Integration specs seed a previous successful refresh and a failing Provider transport.
 
 - Run `bun run test:toolkit:replay`. `toolkit/sync-status.e2e.ts`, `refresh-recovery.e2e.ts`, and `save-refresh.e2e.ts` verify polling, failure messages, retry, cooldown expiry, and distinct Connect again controls. Require the actual request and updated visible status.
-- Run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local test/sync-status.test.ts test/provider-sync-status.test.ts test/merged-lists.test.ts --trace on`. Require the failure to survive reload, the last success to remain stored, and unaffected Source lists to keep their Catalog Titles.
-- Include `test/sync-status.test.ts` and `test/provider-sync-status.test.ts` in the controlled integration run when refresh or Provider authorization changes. `test/sync-status.test.ts` checks Legacy alias access too.
+- Run `CI=1 bun run --filter @stremlist/e2e test:e2e --tag local test/sync-status.e2e.ts test/provider-sync-status.e2e.ts test/merged-lists.e2e.ts --trace on`. Require the failure to survive reload, the last success to remain stored, and unaffected Source lists to keep their Catalog Titles.
+- Include `test/sync-status.e2e.ts` and `test/provider-sync-status.e2e.ts` in the controlled integration run when refresh or Provider authorization changes. `test/sync-status.e2e.ts` checks Legacy alias access too.
 
 ## Gotchas
 

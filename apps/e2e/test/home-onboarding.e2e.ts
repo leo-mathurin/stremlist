@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy, getConfig, hasAccountId } from "../helpers/api.js";
 import { resetDb } from "../helpers/db.js";
@@ -25,7 +26,7 @@ async function pasteOnHome(page: Page, link: string) {
 
 test(
   "new user gets install actions after live validation",
-  { tag: "@live-smoke" },
+  { tags: ["live-smoke"] },
   async ({ page }) => {
     await pasteOnHome(
       page,
@@ -67,7 +68,7 @@ test(
 
 test(
   "returning Legacy alias users land on their configuration",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     await bootstrapLegacy(PUBLIC_USER);
     await page.goto(`${FRONTEND_URL}/?userId=${PUBLIC_USER}`);
@@ -83,7 +84,7 @@ test(
 
 test(
   "unknown IMDb id shows the not-found error",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     await pasteOnHome(page, UNKNOWN_USER);
     await expect(
@@ -98,7 +99,7 @@ test(
 
 test(
   "garbage input shows the format error",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     let resolves = 0;
     page.on("request", (request) => {
@@ -124,7 +125,7 @@ test(
 
 test(
   "unknown routes offer a way back home",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     await page.goto(`${FRONTEND_URL}/this-route-does-not-exist`);
     await expect(

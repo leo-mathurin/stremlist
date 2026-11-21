@@ -1,6 +1,6 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { expect } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import type { Locator, Page } from "../integration-browser.js";
 import { FRONTEND_URL } from "../env.js";
 
 /** The label of the Save button before the first save creates the Account. */

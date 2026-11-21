@@ -63,7 +63,7 @@ export interface FixtureBackend {
 /**
  * Start a backend on a free loopback port with the fetch fixture `preload`
  * (relative to `helpers/`). It uses the local Supabase and RustFS stack of the
- * Playwright backend and dummy Provider client IDs. `extraEnv` adds or
+ * integration backend and dummy Provider client IDs. `extraEnv` adds or
  * overrides variables. The preload logs each Provider request to a temporary
  * file that `requests()` reads.
  */

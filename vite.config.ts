@@ -20,7 +20,6 @@ export default defineConfig({
     ignorePatterns: [
       "**/dist/**",
       "**/coverage/**",
-      "**/playwright-report/**",
       "**/test-results/**",
       ".agents/**",
       ".claude/**",

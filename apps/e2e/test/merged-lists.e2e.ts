@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test, type Page } from "../integration-browser.js";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type {
   ConfigListInput,
@@ -97,7 +98,7 @@ test.beforeEach(resetDb);
 
 test(
   "a merged List serves each Title once, sorted together by date added",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId, listId, catalogId } = await seedMerged(
       [FIRST, SECOND],
@@ -134,7 +135,7 @@ test(
 
 test(
   "a Source list that cannot be read leaves the other Source lists in the Catalog",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId, catalogId } = await seedMerged(
       [FIRST, NO_CONNECTION],
@@ -165,7 +166,7 @@ test(
 
 test(
   "a Legacy alias never serves or saves a merged List with a Connection Source list",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const alias = CATALOG_FIXTURE_USER;
     const accountId = await seedAccount({ legacyImdbUserId: alias });
@@ -203,7 +204,7 @@ test(
 
 test(
   "the API refuses merges that break a rule and keeps the stored Lists",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const {
       accountId,
@@ -279,7 +280,7 @@ test(
 
 test(
   "a save deletes the caches that it no longer uses",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const third: ListSource = {
       provider: "imdb",
@@ -349,7 +350,7 @@ test(
 
 test(
   "merging two Lists on the configure page saves and survives a reload",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const {
       accountId,
@@ -406,7 +407,7 @@ async function genreOptions(accountId: string, catalogId: string) {
 
 test(
   "Source lists of different Providers share a Title once, with each link back",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const trakt: ListSource = {
       provider: "trakt",
@@ -458,7 +459,7 @@ test(
 
 test(
   "a save that omits the merged Source lists keeps them and their labels",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const accountId = await seedAccount();
     const listId = await seedList(accountId, {
@@ -520,7 +521,7 @@ async function removeSource(page: Page, accountId: string, name: string) {
 
 test(
   "removing a merged Source list asks for a reinstall only when the manifest changes",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     for (const name of ["Second QA", "IMDb Watchlist"]) {
       await resetDb();
@@ -561,7 +562,7 @@ test(
 
 test(
   "merging a List into another asks for a reinstall: its Catalog goes away",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     const watchlist = await seedList(accountId, {

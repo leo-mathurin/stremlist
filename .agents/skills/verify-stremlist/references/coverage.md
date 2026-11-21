@@ -10,8 +10,8 @@ The commands below reuse the repository's runners. Read installed Turborepo docs
 | Unused code        | `bun run knip`                                                                                     | No unused files, exports, or dependencies. CI runs it.                                                                                       |
 | Repository hygiene | `gitleaks git --redact --no-banner`, `bun audit --prod`, `bunx commitlint --from <base> --to HEAD` | No secrets in the Git history, no known advisory in production dependencies, Conventional Commits. CI runs all three.                        |
 | UI journeys        | `bun run test:toolkit:replay`                                                                      | Real frontend interactions, exact HTTP payloads, errors, and replayed actions with zero model calls.                                         |
-| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`                         | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
-| Live compatibility | Run the same E2E command separately with `--project=live-smoke` and `--project=live-regression`    | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
+| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --tag local --trace on`                             | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
+| Live compatibility | Run the same E2E command separately with `--tag live-smoke` and `--tag live-regression`            | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
 | Atomic SQL writes  | Commands below                                                                                     | Transaction and concurrency invariants in real Postgres.                                                                                     |
 | Scraper stress     | `bun run --cwd apps/backend test:stress`                                                           | The existing scraper stress cases, excluded from normal backend tests.                                                                       |
 | Formatting         | `bun run format:check`, or `bun run fix` to rewrite                                                | Formatting only. No behavior proof. `bun run lint` also checks it.                                                                           |
@@ -34,7 +34,7 @@ The suite checks exit codes, timeouts, signals, forced termination, locale prese
 
 ## User path matrix
 
-Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@local` (real backend and database, fixture or real IMDb transport), **L** live (`@live-smoke` or `@live-regression`, public IMDb or hosted Stremio Web). Spec files are in `apps/e2e/test`, journeys in `apps/e2e/toolkit`. A gap names the level that is missing.
+Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** e2e integration `@local` (real backend and database, fixture or real IMDb transport), **L** live (`@live-smoke` or `@live-regression`, public IMDb or hosted Stremio Web). Spec files are in `apps/e2e/test`, journeys in `apps/e2e/toolkit`. A gap names the level that is missing.
 
 | User path                                                     | Covered by                                                                                                                              | Levels  | Gap                          |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
@@ -55,7 +55,7 @@ Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@loc
 | Stremio: streams that open Actions                            | `provider-actions`                                                                                                                      | U, P    | Stremio apps                 |
 | Catalog preview                                               | `catalog-preview` (spec and journey)                                                                                                    | U, T, P |                              |
 | Refresh, sync status, Connection renewal                      | `sync-status`; `provider-sync-status`; `refresh-recovery`; `save-refresh`                                                               | U, T, P |                              |
-| Letterboxd queue                                              | `letterboxd-queue`; backend queue tests; `letterboxd_queue.sql`                                                                         | U, T    | Playwright                   |
+| Letterboxd queue                                              | `letterboxd-queue`; backend queue tests; `letterboxd_queue.sql`                                                                         | U, T    | e2e integration              |
 | Newsletter                                                    | `ui` newsletter; `account-newsletter`; `provider-contract` newsletter                                                                   | T, P    | Email delivery               |
 | Terms, Changelog, unknown routes                              | `home` "Terms and Changelog link…"; `ui` public pages; `home-onboarding` unknown routes                                                 | T, P    |                              |
 | Errors and recovery                                           | `configuration-recovery`; `ui` load retry, missing Accounts; `configure-page` failed loads; `catalog-preview` Try again                 | T, P    |                              |
@@ -72,21 +72,21 @@ Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@loc
 - **Newsletter delivery is unverified.** UI tests intercept subscribe requests and integration boot uses a dummy Resend key. Neither proves receipt of email.
 - **Other Providers have no live data.** Trakt, Simkl, MDBList, JustWatch, SensCritique, and Letterboxd reach Stremio only through `helpers/provider.fixture.ts`. A change in a real Provider response is not detected.
 - **Real RPDB delivery, playback, and desktop Stremio protocol handling are outside automated E2E coverage.** Verify the affected path separately before claiming it works.
-- **Browser coverage is Chromium.** The Playwright projects use Desktop Chrome. There is no configured Firefox or WebKit project, dedicated mobile project, accessibility audit, or screenshot regression suite. `phone-journey.test.ts` and `toolkit/phone.e2e.ts` run one journey at 390 x 844 in Chromium. Other journeys and real phone browsers stay unverified at phone width.
+- **Browser coverage is Chromium.** The e2e integration projects use Desktop Chrome. There is no configured Firefox or WebKit project, dedicated mobile project, accessibility audit, or screenshot regression suite. `phone-journey.e2e.ts` and `toolkit/phone.e2e.ts` run one journey at 390 x 844 in Chromium. Other journeys and real phone browsers stay unverified at phone width.
 - **No coverage percentage gate is configured.** Vitest has no coverage threshold in the backend config, and frontend unit tests target scripts and extracted logic. Passing tests do not establish complete component or route coverage.
 - **Stress is opt-in.** Normal backend tests exclude `*.stress.test.ts`. CI does not run the load runner.
 - **Live dependencies can fail independently of the change.** Record public IMDb and hosted Stremio failures separately. Do not relabel them as passes based on controlled fixtures.
-- **The local project is not fully offline.** Saving a chart in `configure-page.test.ts` starts real IMDb prewarming on the main backend. The tag alone does not establish transport isolation. Provider fixture specs use explicit intercepted transports.
-- **Inherited environment matters.** The main Playwright backend inherits exported Provider credentials. Clear them and all Supabase and R2 target overrides as described in Launch. Prevent E2E dotenv files from restoring overrides. The resolved-target check prints only service URLs and the test bucket name.
+- **The local project is not fully offline.** Saving a chart in `configure-page.e2e.ts` starts real IMDb prewarming on the main backend. The tag alone does not establish transport isolation. Provider fixture specs use explicit intercepted transports.
+- **Inherited environment matters.** The main e2e integration backend inherits exported Provider credentials. Clear them and all Supabase and R2 target overrides as described in Launch. Prevent E2E dotenv files from restoring overrides. The resolved-target check prints only service URLs and the test bucket name.
 - **CI scope differs by event.** The Database and E2E jobs run on pull requests and workflow dispatch, not normal branch pushes. A branch push alone is incomplete release evidence.
 - **Isolation is fixed.** Toolkit ports, integration ports, the Supabase project ID, and destructive cleanup are shared within a host. Serial workers do not isolate two independent runs.
-- **Process groups do not contain detached runner children.** Both runners detach servers or browsers. The helper gates the selected server ports but cannot prove detached-browser teardown. Require a separate ownership and exit check. Timeout, interruption, or forced termination leaves runner teardown unverified. Playwright spec cleanup does not run through this helper's SIGTERM path. Discard the disposable integration stack after an interrupted run.
+- **Process groups do not contain detached runner children.** Both runners detach servers or browsers. The helper gates the selected server ports but cannot prove detached-browser teardown. Require a separate ownership and exit check. Timeout, interruption, or forced termination leaves runner teardown unverified. e2e integration spec cleanup does not run through this helper's SIGTERM path. Discard the disposable integration stack after an interrupted run.
 
 ## Delivery criteria
 
 1. Run the CI baseline for code changes. For documentation-only changes, validate the skill, resolve its links, and execute its launch, doctor, one mapped feature, and cleanup once.
 2. Select every affected user entry point from the feature map. Reproduce a reported defect before changing it. Show the user action and the resulting visible state. For a save or Action, include an independent read of the stored result or controlled outbound receipt.
-3. Require the strict toolkit replay for UI behavior changes. Require the relevant Playwright specs for backend, storage, Provider, or addon behavior. Identify which specs use fixture transports and which still read IMDb. A toolkit-only pass cannot close a persistence change.
+3. Require the strict toolkit replay for UI behavior changes. Require the relevant e2e integration specs for backend, storage, Provider, or addon behavior. Identify which specs use fixture transports and which still read IMDb. A toolkit-only pass cannot close a persistence change.
 4. For database migrations or write changes, start a fresh disposable stack, apply migrations through Supabase startup, run the relevant SQL checks, and verify the real API behavior afterward.
 5. For manifest or Catalog changes, inspect the resulting addon response and run the relevant Stremio installation or Catalog journeys. Confirm whether existing installs require a reinstall. Keep Account URLs private.
 6. For visual changes, follow the installed `before-and-after` skill and capture the affected view at relevant desktop and mobile widths with `~/.local/bin/agent-browser`. This verification setup itself changes no product visuals.
@@ -97,7 +97,7 @@ Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@loc
 ## Documentation sources
 
 - Local scripts and configuration are authoritative for the pinned tools. The inventory comes from root and workspace `package.json`, `turbo.json`, `.github/workflows/ci.yml`, `apps/e2e/README.md`, and the existing specs.
-- [Playwright trace documentation](https://github.com/microsoft/playwright/blob/main/docs/src/trace-viewer-intro-js.md) confirms that `--trace on` preserves successful journeys. This was fetched through Context7 while authoring the skill.
+- [e2e configuration documentation](https://e2e.tester.army/docs/reference/config) describes traces and report artifacts.
 
 ## Recorded verification on 2026-10-16
 

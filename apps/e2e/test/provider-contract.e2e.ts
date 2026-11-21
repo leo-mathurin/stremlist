@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import {
   BACKEND_URL,
   CONNECTION_ENCRYPTION_KEY,
@@ -80,7 +81,7 @@ for (const [scenario, status, expected] of [
 ] as const) {
   test(
     `newsletter handler translates provider ${scenario}`,
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ request }) => {
       const response = await request.post(
         `${backend.url}/newsletter/subscribe`,
@@ -94,7 +95,7 @@ for (const [scenario, status, expected] of [
 
 test(
   "newsletter browser recovers through the real handler and isolated provider",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     await page.route(`${BACKEND_URL}/newsletter/subscribe`, async (route) => {
       const response = await route.fetch({
@@ -143,7 +144,7 @@ for (const [id, expected] of [
 ] as const) {
   test(
     `IMDb list ${id} is classified through the real GraphQL transport`,
-    { tag: "@local" },
+    { tags: ["local"] },
     async ({ request }) => {
       const response = await request.post(`${backend.url}/links/resolve`, {
         data: { input: `https://www.imdb.com/list/${id}/` },

@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import type {
   CatalogPreview,
   CatalogPreviewResponse,
@@ -40,6 +41,7 @@ const ANIMATION_LIST = {
 } as const;
 
 let backend: FixtureBackend;
+let previewAttempt = 0;
 
 test.beforeAll(async () => {
   backend = await startFixtureBackend("./provider.fixture.ts");
@@ -73,12 +75,12 @@ function previewOk(result: CatalogPreviewResponse) {
 
 test(
   "a preview resolves the Source list and lists its Unresolved entries",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const result = previewOk(
       await preview(backend.api, {
         provider: "senscritique",
-        sourceRef: `lists/${PREVIEW_PUBLIC_LIST + 100 + test.info().retry}`,
+        sourceRef: `lists/${PREVIEW_PUBLIC_LIST + 100 + previewAttempt++}`,
       }),
     );
 
@@ -148,7 +150,7 @@ test(
 
 test(
   "a preview follows the sort, Show and presets of the List",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const result = previewOk(
       await preview(backend.api, {
@@ -183,7 +185,7 @@ test(
 
 test(
   "a private Source list is an expected problem",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     expect(
       await preview(backend.api, {
@@ -196,7 +198,7 @@ test(
 
 test(
   "a preview of a saved List writes no Catalog cache or sync status and changes no List",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const {
       accountId,
@@ -221,7 +223,7 @@ test(
 
 test(
   "a Legacy alias never previews through a Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ request }) => {
     const accountId = await seedAccount({
       legacyImdbUserId: CATALOG_FIXTURE_USER,
@@ -247,7 +249,7 @@ test(
 
 test(
   "an invalid Letterboxd reference is refused without a read",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     expect(
       await preview(api, {
@@ -267,7 +269,7 @@ async function routePreviews(page: Page) {
 
 test(
   "the configure page shows the titles and Unresolved entries of a List",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedAccountWithLists([
       ANIMATION_LIST,
@@ -319,7 +321,7 @@ function longTitle(index: number) {
 
 test(
   "the more tile opens every Title of a Catalog, one page at a time",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const total = 130;
     const { accountId } = await seedAccountWithLists([ANIMATION_LIST]);
@@ -425,7 +427,7 @@ test(
 
 test(
   "a live IMDb list previews its first Titles",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async () => {
     const result = previewOk(
       await preview(api, { provider: "imdb", sourceRef: PUBLIC_LIST }),

@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import {
   getConnectionRow,
   getSyncStatusRows,
@@ -51,7 +52,7 @@ const watchlistReads = () =>
 
 test(
   "a Catalog preview reads through the Connection of its own Account only",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const owner = await seedAccount();
@@ -117,7 +118,7 @@ test(
 
 test(
   "a Catalog preview through a refused Connection marks it for renewal, but is not a refresh",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -145,7 +146,7 @@ test(
 
 test(
   "a refused Connection is marked for renewal, and a new authorization clears the mark and reads its Lists again",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -206,7 +207,7 @@ test(
 
 test(
   "a working read clears a renewal mark, and a disconnect forgets the sync status of the Lists read through it",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -249,7 +250,7 @@ test(
 
 test(
   "a merged List keeps the sync status of each Source list through a refused Connection, a new one and a disconnect",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
