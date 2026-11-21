@@ -57,3 +57,6 @@ playwright-report/
 # tester-army/e2e reports are local; verified action recordings are shared.
 **/.e2e/*
 !**/.e2e/cache/
+
+# Claude Code agent worktrees: full checkouts that knip and Git must skip.
+.claude/worktrees/

@@ -11,5 +11,10 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["../vite.config.ts", "oxlint/**/*.ts", "../.github/scripts/*.mjs"]
+  "include": [
+    "../vite.config.ts",
+    "oxlint/**/*.ts",
+    "*.mjs",
+    "../.github/scripts/*.mjs"
+  ]
 }

@@ -135,7 +135,11 @@ Lint and format rules live in the root [`vite.config.ts`](vite.config.ts) ([Vite
 [React Compiler rules](https://react.dev/reference/eslint-plugin-react-hooks) for the frontend and a vendored copy of
 [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md). Do not add disable comments: fix the code, or change the policy in
 `vite.config.ts` with a reason. The frontend builds with the React Compiler, and the build fails if it is not active.
-The hooks in `.vite-hooks` run when you commit. `bun install` enables them through `vp config`.
+The hooks in `.vite-hooks` run when you commit. `bun install` enables them through `vp config`
+([`tools/git-hooks.mjs`](tools/git-hooks.mjs)). Git worktrees share `core.hooksPath`, which points at `.vite-hooks/_`
+in the current checkout, so run `bun install` in each new worktree. The script also removes the `.husky/_` path that
+the old Husky setup left. If a checkout still has a commit from before Vite+, `pnpm install` there sets that path
+again: update the checkout, then run `bun install`.
 
 - `pre-commit` scans the staged changes with [Gitleaks](https://github.com/gitleaks/gitleaks#installing), which you must install. It then runs `vp staged`, knip, the builds and the tests. `.gitleaks.toml` lists the fake and public keys that Gitleaks must accept.
 - `commit-msg` checks the message with [commitlint](https://commitlint.js.org) and the Conventional Commits rules. The version bump on `main` reads these messages. CI also checks the commits and the title of each pull request.
