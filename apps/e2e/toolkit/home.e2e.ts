@@ -200,7 +200,7 @@ test("Terms and Changelog link their sections and lead back Home", async ({
     .tap();
   await expect(browser).toHaveURL("/changelog");
 
-  await expect(toc.getByRole("link").first()).toHaveText(
+  await expect(toc.getByRole("link", /^v2\.0\.0/)).toHaveText(
     "v2.0.0 November 9, 2026",
   );
   await toc.getByRole("link", /^v1\.0\.0/).tap();
