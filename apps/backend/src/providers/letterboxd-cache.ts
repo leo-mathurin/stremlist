@@ -15,6 +15,7 @@ const cacheSchema = z.object({
   leaseId: z.string().nullable(),
   leaseUntil: z.number(),
   snapshot: letterboxdSnapshotSchema.nullable(),
+  sourceGone: z.boolean().optional(),
 });
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -67,7 +68,12 @@ export async function letterboxdSnapshot(
   }
   for (;;) {
     state = await load();
-    if (!state.etag && legacyKey && !forceRefresh) {
+    if (
+      legacyKey &&
+      !forceRefresh &&
+      !state.value.snapshot &&
+      !state.value.sourceGone
+    ) {
       const previous = await readJsonVersion(legacyKey).catch(() => null);
       const legacy = cacheSchema.safeParse(previous?.value);
       if (
@@ -120,6 +126,7 @@ export async function letterboxdSnapshot(
         {
           ...state.value,
           snapshot: gone ? null : state.value.snapshot,
+          ...(gone ? { sourceGone: true } : {}),
           leaseId: null,
           leaseUntil: 0,
         },

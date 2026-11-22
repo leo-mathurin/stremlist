@@ -316,8 +316,9 @@ describe("Letterboxd public reads", () => {
     expect(parseLetterboxdPage(html).valid).toBe(false);
   });
 
-  it("reuses an old snapshot and stores a refreshed UID without changing the old cache", async () => {
+  it("keeps the old snapshot after a transient refresh failure, but not after a 404", async () => {
     const path = "/alice/watchlist/";
+    const url = `${LETTERBOXD}${path}`;
     const pageKey = `${createHash("sha256").update(path).digest("hex")}.json`;
     const legacyKey = `providers/letterboxd/pages-v1/${pageKey}`;
     const oldSnapshot = {
@@ -334,14 +335,31 @@ describe("Letterboxd public reads", () => {
         leaseUntil: 0,
       }),
     );
-    letterboxd.serve(
-      `${LETTERBOXD}${path}`,
-      page([2]).replace('data-item-slug="film-2"', 'data-item-slug="film:2"'),
-    );
     const cached = await letterboxdProvider.fetchSource(ref, context);
     expect(cached.entries.map((entry) => entry.title)).toEqual(["Film 1"]);
     expect(letterboxd.urls).toEqual([]);
 
+    letterboxd.fail(url, 503);
+    const forceRefresh = { ...context, forceRefresh: true };
+    await expect(
+      letterboxdProvider.fetchSource(ref, forceRefresh),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    const recovered = await letterboxdProvider.fetchSource(ref, context);
+    expect(recovered.entries.map((entry) => entry.title)).toEqual(["Film 1"]);
+    expect(letterboxd.urls).toEqual([url]);
+
+    letterboxd.fail(url, 404);
+    await expect(
+      letterboxdProvider.fetchSource(ref, forceRefresh),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+
+    letterboxd.serve(
+      url,
+      page([2]).replace('data-item-slug="film-2"', 'data-item-slug="film:2"'),
+    );
     const refreshed = await letterboxdProvider.fetchSource(ref, {
       ...context,
       forceRefresh: true,
@@ -349,7 +367,7 @@ describe("Letterboxd public reads", () => {
     expect(refreshed.entries.map((entry) => entry.sourceUrl)).toEqual([
       `${LETTERBOXD}/film/film:2/`,
     ]);
-    expect(letterboxd.urls).toEqual([`${LETTERBOXD}${path}`]);
+    expect(letterboxd.urls).toEqual([url, url, url, url]);
     expect(stored(legacyKey).snapshot).toEqual(oldSnapshot);
     expect(
       stored(`providers/letterboxd/pages-v2/${pageKey}`).snapshot?.films[0],
