@@ -1,5 +1,21 @@
 [
   {
+    "version": "v2.17.1",
+    "date": "November 22, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Accept film IDs in list pages."
+      },
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Keep legacy cache after transient refresh failures."
+      }
+    ]
+  },
+  {
     "version": "v2.17.0",
     "date": "November 20, 2026",
     "changes": [
