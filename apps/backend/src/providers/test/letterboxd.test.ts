@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { createHash } from "node:crypto";
 import {
   afterEach,
   beforeEach,
@@ -182,7 +183,7 @@ describe("Letterboxd public reads", () => {
       letterboxdProvider.fetchSource(ref, { ...context, forceRefresh: true }),
     ).rejects.toMatchObject({ reason: "unavailable" });
     for (const key of r2Objects.keys())
-      if (key.includes("pages-v1")) {
+      if (key.includes("pages-v2")) {
         expect(stored(key).snapshot?.films.map((film) => film.uid)).toEqual([
           "film:1",
         ]);
@@ -272,6 +273,89 @@ describe("Letterboxd public reads", () => {
     expect(letterboxd.urls).toEqual([`${LETTERBOXD}/film/film-1/`]);
   });
 
+  it("reads a full paginated list and resolves a film linked by its UID", async () => {
+    const listPath = "/alice/list/mixed/";
+    const nextPage = `${listPath}page/2/`;
+    const filmUrl = `${LETTERBOXD}/film/film:2/`;
+    letterboxd.serve(`${LETTERBOXD}${listPath}`, page([1], nextPage));
+    letterboxd.serve(
+      `${LETTERBOXD}${nextPage}`,
+      page([2, 3]).replace(
+        'data-item-slug="film-2"',
+        'data-item-slug="film:2"',
+      ),
+    );
+    letterboxd.serve(filmUrl, letterboxdFilmPage("tt0111161"));
+
+    const read = letterboxdProvider.fetchSource(
+      "users/alice/lists/mixed",
+      context,
+    );
+    const result = await untilSettled(read);
+    expect(result.complete).toBe(true);
+    expect(result.entries.map((entry) => entry.sourceUrl)).toEqual([
+      `${LETTERBOXD}/film/film-1/`,
+      filmUrl,
+      `${LETTERBOXD}/film/film-3/`,
+    ]);
+    const resolution = resolveEntries(
+      letterboxdProvider,
+      result.entries.slice(1, 2),
+    );
+    expect((await untilSettled(resolution)).resolved[0]?.imdbId).toBe(
+      "tt0111161",
+    );
+    expect(letterboxd.urls).toContain(filmUrl);
+  });
+
+  it("rejects a film path that points to a different UID than the card", () => {
+    const html = page([1]).replace(
+      'data-item-slug="film-1"',
+      'data-item-slug="film:2"',
+    );
+    expect(parseLetterboxdPage(html).valid).toBe(false);
+  });
+
+  it("reuses an old snapshot and stores a refreshed UID without changing the old cache", async () => {
+    const path = "/alice/watchlist/";
+    const pageKey = `${createHash("sha256").update(path).digest("hex")}.json`;
+    const legacyKey = `providers/letterboxd/pages-v1/${pageKey}`;
+    const oldSnapshot = {
+      films: [{ uid: "film:1", slug: "film-1", title: "Film 1" }],
+      complete: true,
+      title: "A list",
+    };
+    r2Objects.set(
+      legacyKey,
+      JSON.stringify({
+        snapshot: oldSnapshot,
+        fetchedAt: Date.now(),
+        leaseId: null,
+        leaseUntil: 0,
+      }),
+    );
+    letterboxd.serve(
+      `${LETTERBOXD}${path}`,
+      page([2]).replace('data-item-slug="film-2"', 'data-item-slug="film:2"'),
+    );
+    const cached = await letterboxdProvider.fetchSource(ref, context);
+    expect(cached.entries.map((entry) => entry.title)).toEqual(["Film 1"]);
+    expect(letterboxd.urls).toEqual([]);
+
+    const refreshed = await letterboxdProvider.fetchSource(ref, {
+      ...context,
+      forceRefresh: true,
+    });
+    expect(refreshed.entries.map((entry) => entry.sourceUrl)).toEqual([
+      `${LETTERBOXD}/film/film:2/`,
+    ]);
+    expect(letterboxd.urls).toEqual([`${LETTERBOXD}${path}`]);
+    expect(stored(legacyKey).snapshot).toEqual(oldSnapshot);
+    expect(
+      stored(`providers/letterboxd/pages-v2/${pageKey}`).snapshot?.films[0],
+    ).toMatchObject({ uid: "film:2", slug: "film:2" });
+  });
+
   it.each([200, 503])(
     "counts a challenge in an HTTP %i response as a refusal",
     async (status) => {
@@ -329,7 +413,7 @@ describe("Letterboxd public reads", () => {
     ).rejects.toMatchObject({ reason: "unavailable" });
     expect(
       [...r2Objects.keys()]
-        .filter((key) => key.includes("pages-v1"))
+        .filter((key) => key.includes("pages-v2"))
         .map((key) => stored(key).snapshot),
     ).toEqual([null]);
     expect(
@@ -458,7 +542,7 @@ describe("Letterboxd public reads", () => {
     });
     expect(gate().pausedUntil).toBe(-Infinity);
     for (const [key, value] of r2Objects)
-      if (key.includes("pages-v1"))
+      if (key.includes("pages-v2"))
         expect(stateSchema.parse(JSON.parse(value)).snapshot).toBeNull();
     await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
     letterboxd.serveAll(page([1]));

@@ -1,16 +1,22 @@
 import { load } from "cheerio";
 import { z } from "zod";
 
-const letterboxdFilmSchema = z.object({
-  uid: z.string().regex(/^film:\d+$/),
-  slug: z.string().regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/),
-  title: z.string().min(1),
-  year: z.number().int().min(1870).max(2200).optional(),
-  watchedAt: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-});
+export const letterboxdFilmPathSegment = z
+  .string()
+  .regex(/^(?:[a-z0-9]+(?:[-_][a-z0-9]+)*|film:\d+)$/);
+
+const letterboxdFilmSchema = z
+  .object({
+    uid: z.string().regex(/^film:\d+$/),
+    slug: letterboxdFilmPathSegment,
+    title: z.string().min(1),
+    year: z.number().int().min(1870).max(2200).optional(),
+    watchedAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  })
+  .refine(({ slug, uid }) => !slug.startsWith("film:") || slug === uid);
 export type LetterboxdFilm = z.infer<typeof letterboxdFilmSchema>;
 export const letterboxdSnapshotSchema = z.object({
   films: z.array(letterboxdFilmSchema).max(4000),

@@ -45,7 +45,10 @@ const LEASE_WAIT_MS = 10_000;
 export async function letterboxdSnapshot(
   key: string,
   read: () => Promise<z.infer<typeof letterboxdSnapshotSchema>>,
-  forceRefresh = false,
+  {
+    forceRefresh = false,
+    legacyKey,
+  }: { forceRefresh?: boolean; legacyKey?: string } = {},
 ) {
   const requestedAt = Date.now();
   const id = randomUUID();
@@ -64,6 +67,16 @@ export async function letterboxdSnapshot(
   }
   for (;;) {
     state = await load();
+    if (!state.etag && legacyKey && !forceRefresh) {
+      const previous = await readJsonVersion(legacyKey).catch(() => null);
+      const legacy = cacheSchema.safeParse(previous?.value);
+      if (
+        legacy.success &&
+        legacy.data.snapshot &&
+        Date.now() - legacy.data.fetchedAt < LETTERBOXD_FRESHNESS_MS
+      )
+        return legacy.data.snapshot;
+    }
     if (
       state.value.snapshot &&
       Date.now() - state.value.fetchedAt < LETTERBOXD_FRESHNESS_MS &&

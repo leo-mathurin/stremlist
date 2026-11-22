@@ -19,6 +19,7 @@ import {
 import type { PermitOptions } from "./letterboxd-gate";
 import {
   isLetterboxdForbiddenPage,
+  letterboxdFilmPathSegment,
   parseLetterboxdPage,
 } from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
@@ -389,11 +390,11 @@ async function readPage(
   restMs = 0,
 ) {
   const path = pagePath(base, page);
-  const key = `providers/letterboxd/pages-v1/${createHash("sha256").update(path).digest("hex")}.json`;
+  const pageKey = `${createHash("sha256").update(path).digest("hex")}.json`;
   const options = { diary: isDiaryPath(base) };
   const url = `https://letterboxd.com${path}`;
   return letterboxdSnapshot(
-    key,
+    `providers/letterboxd/pages-v2/${pageKey}`,
     async () => {
       const parsed = parseLetterboxdPage(
         await readHtml(
@@ -412,7 +413,7 @@ async function readPage(
         ...(parsed.pages ? { pages: parsed.pages } : {}),
       };
     },
-    forceRefresh,
+    { forceRefresh, legacyKey: `providers/letterboxd/pages-v1/${pageKey}` },
   );
 }
 
@@ -516,10 +517,12 @@ const filmLinksStrategy: ResolverStrategy = {
   async resolve(entries) {
     const found = new Map<number, string>();
     for (const [index, entry] of entries.entries()) {
-      const slug = entry.externalIds?.letterboxd?.slug;
-      if (!slug || !/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug)) continue;
+      const slug = letterboxdFilmPathSegment.safeParse(
+        entry.externalIds?.letterboxd?.slug,
+      );
+      if (!slug.success) continue;
       const $ = load(
-        await readHtml(`https://letterboxd.com/film/${slug}/`, "film"),
+        await readHtml(`https://letterboxd.com/film/${slug.data}/`, "film"),
       );
       const ids = new Set<string>();
       $('a[data-track-action="IMDb"][href]').each((_, node) => {
@@ -571,11 +574,10 @@ export const letterboxdProvider: ProviderAdapter = {
       "P6127",
       (entry) => entry.externalIds?.letterboxd?.uid,
     ),
-    wikidataStrategy(
-      "letterboxd-wikidata-slug",
-      "P6127",
-      (entry) => entry.externalIds?.letterboxd?.slug,
-    ),
+    wikidataStrategy("letterboxd-wikidata-slug", "P6127", (entry) => {
+      const slug = entry.externalIds?.letterboxd?.slug;
+      return slug?.startsWith("film:") ? undefined : slug;
+    }),
     filmLinksStrategy,
   ],
 };

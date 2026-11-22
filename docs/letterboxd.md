@@ -24,7 +24,7 @@ IMDb resolution first uses exact [Wikidata Letterboxd IDs](https://www.wikidata.
 
 ## Shared cache and request coordination
 
-Parsed public pages live in R2 under `providers/letterboxd/pages-v1/`. They are shared between Accounts and remain fresh for six hours. Conditional writes give one worker the page lease. A manual Refresh now waits for an older in-process refresh to settle, then revalidates the pages. It does not join an ordinary cached read or wait for the six-hour expiry. Catalog metadata, stale fallback, sync status and detection history use the existing List pipeline.
+Parsed public pages live in R2 under `providers/letterboxd/pages-v2/`. They are shared between Accounts and remain fresh for six hours. Existing `pages-v1/` snapshots can still serve reads while `pages-v2/` is empty for that page. Conditional writes give one worker the page lease. A manual Refresh now waits for an older in-process refresh to settle, then revalidates the pages. It does not join an ordinary cached read or wait for the six-hour expiry. Catalog metadata, stale fallback, sync status and detection history use the existing List pipeline.
 
 The `public.letterboxd_gate` row in Postgres coordinates outbound requests across instances (`supabase/migrations/20261108120000_letterboxd_gate.sql`). R2 allows one write per second per object, which capped the previous R2 gate near 0.5 request/s. The gate is a token bucket with a fair queue in front of it (`public.letterboxd_take_turn`, `supabase/migrations/20261108140000_letterboxd_queue.sql`):
 
