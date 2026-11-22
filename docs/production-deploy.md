@@ -98,7 +98,8 @@ when `CI` fails, so a red `main` never reaches production.
 
 1. **Release commit.** The commit to release is the merge commit, or the
    `chore(release): vX.Y.Z [skip ci]` commit that the CI `version-bump` job
-   puts on top of it. That commit changes only the version files, so the tested
+   puts on top of it. That commit changes only the version files and adds the
+   release entry to `apps/frontend/src/content/changelog.json`, so the tested
    code is the released code. Any other commit on `main` means a newer merge
    has overtaken this run: the run stops, and the newer run releases both.
 2. **Plan** (read-only) and **Build**, in parallel:

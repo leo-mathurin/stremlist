@@ -1,51 +1,20 @@
-import { execSync } from "node:child_process";
 import { readFileSync, appendFileSync } from "node:fs";
+import { readCommits } from "./changelog.mjs";
 
-const ZERO = "0".repeat(40);
-const before = process.env.BEFORE ?? "";
-const after = process.env.AFTER || "HEAD";
-
-const range =
-  !before || before === ZERO ? `${after}~1..${after}` : `${before}..${after}`;
-
-let raw = "";
-try {
-  raw = execSync(`git log ${range} --format=%s%x00%b%x1e`, {
-    encoding: "utf8",
-  });
-} catch {
-  raw = execSync(`git log -1 ${after} --format=%s%x00%b%x1e`, {
-    encoding: "utf8",
-  });
-}
-
-const commits = raw
-  .split("\x1e")
-  .map((entry) => entry.trim())
-  .filter(Boolean)
-  .map((entry) => {
-    const [subject = "", body = ""] = entry.split("\x00");
-    return { subject, body };
-  });
+const { range, commits } = readCommits(
+  process.env.BEFORE ?? "",
+  process.env.AFTER || "HEAD",
+);
 
 const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
-const TYPE_RE = /^(\w+)(?:\([^)]*\))?(!)?:/;
-const BREAKING_RE = /(^|\n)BREAKING[ -]CHANGE:/;
-
 let bump = "none";
 const raise = (level) => {
   if (RANK[level] > RANK[bump]) bump = level;
 };
 
-for (const { subject, body } of commits) {
-  const m = subject.match(TYPE_RE);
-  if (m?.[2] === "!" || BREAKING_RE.test(body) || BREAKING_RE.test(subject)) {
-    raise("major");
-    continue;
-  }
-  if (!m) continue;
-  const type = m[1].toLowerCase();
-  if (type === "feat") raise("minor");
+for (const { type, breaking } of commits) {
+  if (breaking) raise("major");
+  else if (type === "feat") raise("minor");
   else if (type === "fix" || type === "perf") raise("patch");
 }
 

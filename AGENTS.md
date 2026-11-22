@@ -12,6 +12,14 @@ When a change makes a toolkit recording stale (`REPLAY_STALE` or a missing recor
 
 The Mac, oracle-dev and tour each have the ChatGPT login for recording. If the login is missing or expired on the machine you use, run `bun run --cwd apps/e2e e2e login openai --device` and give Léo the URL and code. Read [the E2E README](apps/e2e/README.md) for the cache rules.
 
+# Changelog
+
+Each release adds one entry to `apps/frontend/src/content/changelog.json`. The CI `version-bump` job writes it: one line for each `feat`, `fix` and `perf` commit of the merge, taken from the commit subject. Users read these lines on `/changelog`, so do not add release entries by hand.
+
+- When the subject does not tell a user what changed, add a `Changelog: <sentence for users>` line to the commit body. It replaces the subject. Keep each line below 100 characters. Start a continuation line with two spaces.
+- When users cannot see the change, add `Changelog: skip` to the commit body. A release with no line left gets one maintenance line.
+- To correct a published entry, edit the JSON file in a pull request.
+
 <!-- BEGIN:turborepo-agent-rules -->
 
 # This is NOT the Turborepo you know

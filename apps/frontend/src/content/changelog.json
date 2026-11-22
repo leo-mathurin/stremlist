@@ -1,0 +1,739 @@
+[
+  {
+    "version": "v2.17.0",
+    "date": "November 20, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add \"New titles\" from Quick add, then rename, move, filter and preview it like your other Lists. Sort titles by when Stremlist found them or when they came out."
+      }
+    ]
+  },
+  {
+    "version": "v2.16.2",
+    "date": "November 20, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Compatibility",
+        "text": "If you link the main account for your Stremio Supporter profiles, Stremlist updates the addon on each profile where you installed it with the same Addon URL."
+      }
+    ]
+  },
+  {
+    "version": "v2.16.1",
+    "date": "November 20, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Trakt Up Next now shows only series where you watched at least one episode."
+      }
+    ]
+  },
+  {
+    "version": "v2.16.0",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "In Options, choose what to share from your linked Stremio account with Trakt, Simkl or MDBList. For each Connection, you can send watched marks, add new library titles to your watchlist, or do both."
+      },
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "When Stremio sends a library addition, Stremlist checks the title's current status on Simkl before adding it to Plan to Watch. This keeps titles you already started or finished in their current lists."
+      }
+    ]
+  },
+  {
+    "version": "v2.15.1",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Open supported Source lists on their Provider directly from your saved Lists. Links to your Trakt lists now open the correct Trakt pages."
+      }
+    ]
+  },
+  {
+    "version": "v2.15.0",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Trakt Up Next now leaves out series you dropped or hid from your watched progress."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Sort any List by release date, newest or oldest first. For Trakt Up Next, this uses the date of the latest aired episode."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Use \"Hide unreleased titles\" to leave upcoming movies and series out of a List's Catalogs."
+      }
+    ]
+  },
+  {
+    "version": "v2.14.0",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "A Stremlist Account can now hold up to 50 Lists and 50 Source lists."
+      },
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "Stremlist prepares more Catalogs in parallel after you save, so large setups are ready sooner."
+      }
+    ]
+  },
+  {
+    "version": "v2.13.2",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Fixed a check that could flag valid code before release."
+      }
+    ]
+  },
+  {
+    "version": "v2.13.1",
+    "date": "November 19, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "A single refused Letterboxd request now affects only that read. Stremlist waits for repeated refusals before it pauses Letterboxd refreshes."
+      }
+    ]
+  },
+  {
+    "version": "v2.13.0",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Quick add now shows one Provider's Lists at a time and opens the most recently connected Provider first. You can open a Source list on its Provider when a link is available."
+      }
+    ]
+  },
+  {
+    "version": "v2.12.0",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Quick add offers more Simkl charts for movies, TV and anime, including daily and monthly trends, monthly trends by genre, and DVD releases. Connect Simkl to add your Airing Soon and Continue Watching lists."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect MDBList to add Up Next, your collection, recommendations and more official charts, including weekly Most Watched and JustWatch Streaming Charts."
+      }
+    ]
+  },
+  {
+    "version": "v2.11.0",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect Trakt to add Continue Watching, your personal calendar, and lists you like or help manage. You can also add public calendars for new shows, season premieres, upcoming movies and DVD releases."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add SensCritique lists for titles in progress, titles a member recently liked, or titles they watched in a specific year. You can also add the Top 111 anime chart and a member's ranking in a poll."
+      }
+    ]
+  },
+  {
+    "version": "v2.10.3",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Maintenance update to speed up the checks that run before a release."
+      }
+    ]
+  },
+  {
+    "version": "v2.10.2",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "The full Catalog preview shows placeholders while it loads more titles, so the window stays the same size as they appear."
+      }
+    ]
+  },
+  {
+    "version": "v2.10.1",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Compatibility",
+        "text": "The configure page now loads saved Lists when you run Stremlist locally over HTTP."
+      }
+    ]
+  },
+  {
+    "version": "v2.10.0",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Select the \"+N more\" tile in a Catalog preview to browse every title in that Catalog. More titles load as you scroll."
+      },
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "The full Catalog preview stays responsive as you scroll through thousands of titles."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.5",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "A blocked Letterboxd member film page now affects only its own List. That List keeps its last successful Catalog, and other Letterboxd Lists can still refresh."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.4",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "When a Letterboxd watchlist goes private, Stremlist clears its Catalog and lets other Letterboxd Lists refresh."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.3",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "The Stremio preview on the home page shows more posters to fill its rows on wide screens."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.2",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Watch tracking can now send the watched mark for the episode you just finished when you open streams for the next one."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.1",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Stremlist avoids duplicate and false alerts when Letterboxd refreshes pause or resume."
+      }
+    ]
+  },
+  {
+    "version": "v2.9.0",
+    "date": "November 18, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Choose IMDb, TMDB, TheTVDB or RPDB as the poster source for your Catalogs. Open \"Examples\" to compare posters before you save."
+      },
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "The example posters appear in one row that you can scroll sideways on any screen."
+      }
+    ]
+  },
+  {
+    "version": "v2.8.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Stremlist now checks individual types of Source list, so it can detect a problem even when other Lists from that Provider still load."
+      }
+    ]
+  },
+  {
+    "version": "v2.7.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect MDBList to add your ratings, watch history and liked lists, plus official charts for trending, popular, anticipated and most-watched titles. Watch history includes series you started and have yet to finish."
+      }
+    ]
+  },
+  {
+    "version": "v2.6.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add Simkl's weekly Trending Movies, TV and Anime charts from Quick add without a Connection."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect Simkl to add the movies, series and anime you rated."
+      }
+    ]
+  },
+  {
+    "version": "v2.5.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add SensCritique links for watched titles, ratings, favorites and poll results. Quick add also offers the Top 111 and Top 100 charts for movies and series."
+      }
+    ]
+  },
+  {
+    "version": "v2.4.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Paste a public IMDb ratings link to add a Catalog of up to 10,000 of that user's most recent ratings."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add IMDb's Bottom 100 and its Top 250 movie charts for English, Indian, Tamil, Telugu and Malayalam films."
+      }
+    ]
+  },
+  {
+    "version": "v2.3.0",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Add Trakt favorites or ratings from your Connection or from a public profile. You can also add a public profile's watch history or collection, the box office, and more weekly charts."
+      },
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Trakt watch history and collections now include titles beyond the first page."
+      }
+    ]
+  },
+  {
+    "version": "v2.2.3",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "On a touch screen, drag a List by its handle as soon as you move your finger. You no longer need to press and hold."
+      }
+    ]
+  },
+  {
+    "version": "v2.2.2",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "On mobile, use \"Move up\" and \"Move down\" to change the order of your Lists."
+      }
+    ]
+  },
+  {
+    "version": "v2.2.1",
+    "date": "November 17, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Stremlist reads the SensCritique status page more reliably when it checks for outages."
+      }
+    ]
+  },
+  {
+    "version": "v2.2.0",
+    "date": "November 16, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "The configure page now shows a banner when a Provider has an outage. It uses the official status pages of Trakt, Simkl, MDBList and SensCritique as well as Stremlist's own checks."
+      }
+    ]
+  },
+  {
+    "version": "v2.1.0",
+    "date": "November 16, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Paste a public Trakt smart list link to add it as a Catalog, or connect Trakt to add your own smart lists, including private ones. Stremlist keeps the top 1,000 titles in Trakt's order."
+      }
+    ]
+  },
+  {
+    "version": "v2.0.1",
+    "date": "November 16, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Stremlist retries a SensCritique request once if it times out, so a brief timeout is less likely to interrupt a refresh."
+      }
+    ]
+  },
+  {
+    "version": "v2.0.0",
+    "date": "November 9, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Stremlist now reads more than IMDb. Add watchlists and lists from Trakt, Simkl, MDBList, JustWatch, SensCritique and Letterboxd, next to your IMDb watchlist and lists."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect your Trakt, Simkl or MDBList account to read your private lists. If a connection expires, the list shows it and you can connect again in one click."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Letterboxd support includes watchlists, lists, watched films, diary, likes, share links and boxd.it short links."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Merge up to 5 lists into one catalog. Titles that appear in more than one list show only once."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added an optional \"New titles\" catalog that shows the titles recently added to any of your lists."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Preview the catalogs of a list before you save it, including the entries that Stremlist could not match to a title."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Each list now shows when it last synced and why a sync failed. The configure page also tells you when you must reinstall the addon in Stremio after a save."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Redesigned the home, configure, changelog and terms pages, with Quick add for popular charts."
+      },
+      {
+        "type": "bugfix",
+        "label": "Compatibility",
+        "text": "Stremlist works in Nuvio. The Install button opens Nuvio, and your Lists, sort options, filters and search show as in Stremio."
+      },
+      {
+        "type": "bugfix",
+        "label": "Compatibility",
+        "text": "Addons installed with your IMDb user ID keep working. Open your configure page to add the new sources."
+      }
+    ]
+  },
+  {
+    "version": "v1.10.0",
+    "date": "September 15, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added per-catalog filters for genre, decade, maximum runtime, and minimum IMDb rating. Combine them to narrow down what you want to watch."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added title search for your catalogs in Stremio, including accent-insensitive matching. Your saved filters also apply to search results."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added optional \"90 min or less\", \"Top rated\", and \"Shuffle\" catalogs in Stremio. Enable them under \"Filters & extra catalogs\", save, and reinstall the addon to show the new catalogs."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added filters and sorting options in Stremio's catalog dropdown, including shortest or longest runtime and newest or oldest release date, without changing your saved settings."
+      },
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Fixed TV episode selection when Stremlist is listed before other metadata addons. Series details now come from another installed metadata provider, while your series catalogs stay available."
+      },
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Watchlists and your RPDB key now save together, so a failed save cannot leave only part of your configuration updated. Save failures also show a clear error message."
+      }
+    ]
+  },
+  {
+    "version": "v1.9.0",
+    "date": "September 1, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Increased support for IMDb watchlists and lists from 10,000 to 15,000 titles."
+      },
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "Catalogs start preparing in the background after you save your configuration, reducing the wait when you next open them in Stremio."
+      },
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Improved handling of simultaneous refresh requests and added clearer feedback when configuration loading or catalog refreshes fail."
+      }
+    ]
+  },
+  {
+    "version": "v1.8.0",
+    "date": "August 26, 2026",
+    "changes": [
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "Reworked catalog caching to store large watchlists more efficiently and reuse saved results without fetching IMDb again."
+      },
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Improved recovery from stale cache entries and made cache replacement and deletion safer when requests overlap."
+      }
+    ]
+  },
+  {
+    "version": "v1.7.0",
+    "date": "June 27, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added built-in IMDb chart catalogs: add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added a per-catalog \"Show\" option so each watchlist or list can display movies only, TV shows only, or both."
+      }
+    ]
+  },
+  {
+    "version": "v1.5.0",
+    "date": "May 30, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added a \"Refresh now\" button on the Configure page to pull your latest IMDb watchlist on demand, with a \"Last refreshed\" label and a short cooldown between refreshes."
+      },
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch. This makes catalogs noticeably quicker and more resilient."
+      },
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Private or unavailable watchlists now show a clear informational card explaining why the catalog is empty instead of failing, and metadata is served from cache to stop Stremio from retry-storming during IMDb outages."
+      }
+    ]
+  },
+  {
+    "version": "v1.4.0",
+    "date": "March 12, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added support for IMDb lists (ls-prefixed IDs) alongside watchlists, so you can now add any public IMDb list as a catalog."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added drag-and-drop reordering for catalogs on the Configure page, making it easy to arrange your catalogs in your preferred order."
+      }
+    ]
+  },
+  {
+    "version": "v1.3.0",
+    "date": "February 23, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Fixed recurring backend downtime caused by the previous scraping approach by rebuilding the IMDb scraping flow for better stability."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added RPDB poster support for improved artwork in catalogs."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added support for multiple IMDb watchlists in a single setup."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added a new \"Random\" sort order."
+      },
+      {
+        "type": "enhancement",
+        "label": "Open source",
+        "text": "Open-sourced Stremlist to make community contributions and transparency easier."
+      },
+      {
+        "type": "performance",
+        "label": "Architecture",
+        "text": "Rebuilt deployment around Vercel (frontend + API), replacing the old self-managed Linux VPS setup for simpler operations, easier rollouts, and better uptime."
+      }
+    ]
+  },
+  {
+    "version": "v1.2.1",
+    "date": "May 14, 2025",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added \"Date Added\" sorting options to display watchlist items in the order they were added to IMDb (oldest first or newest first)."
+      },
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Changed default sorting to \"Date Added (Oldest First)\" which preserves the natural order from IMDb."
+      }
+    ]
+  },
+  {
+    "version": "v1.2.0",
+    "date": "May 12, 2025",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Added comprehensive sorting functionality: users can now sort their watchlists by title (A-Z/Z-A), year (newest/oldest first), or rating (highest/lowest first). Sort options are available both during initial setup and in configuration, with preferences persisted consistently across installations."
+      }
+    ]
+  },
+  {
+    "version": "v1.1.1",
+    "date": "March 28, 2024",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Added specific error message for private IMDb watchlists"
+      },
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Improved error messaging to provide clearer guidance when issues occur"
+      }
+    ]
+  },
+  {
+    "version": "v1.1.0",
+    "date": "March 26, 2024",
+    "changes": [
+      {
+        "type": "performance",
+        "label": "Performance",
+        "text": "Replaced HTML scraping with direct GraphQL API calls to improve reliability and efficiency"
+      },
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "Fixed issue where posters and titles were displayed in French instead of English"
+      },
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Increased the watchlist item limit from 250 to 10,000 items"
+      }
+    ]
+  },
+  {
+    "version": "v1.0.0",
+    "date": "March 19, 2024",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Enhancement",
+        "text": "Initial release of Stremlist"
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Connect IMDb watchlist to Stremio through user ID"
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Automatic refresh of watchlist data every 6-12 hours"
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Support for movies and TV series from IMDb watchlists"
+      }
+    ]
+  }
+]
