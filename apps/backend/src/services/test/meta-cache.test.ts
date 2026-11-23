@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import app from "../../index.js";
 import * as listsSvc from "../lists";
+import { titleArtwork } from "../posters";
 import {
   movie,
   seedAccount,
@@ -33,6 +34,12 @@ const BREAKING_BAD: StremioMeta = {
   id: "tt0903747",
   type: "series",
   name: "Breaking Bad",
+};
+
+const SERVED_SHAWSHANK = { ...SHAWSHANK, ...titleArtwork(SHAWSHANK.id) };
+const SERVED_BREAKING_BAD = {
+  ...BREAKING_BAD,
+  ...titleArtwork(BREAKING_BAD.id),
 };
 
 let accountId = "";
@@ -109,16 +116,21 @@ describe("meta route serves from cache only", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ metas: [BREAKING_BAD] });
+    expect(await res.json()).toEqual({ metas: [SERVED_BREAKING_BAD] });
   });
 
   it.each([
-    ["a cached item, with its raw poster", "tt0111161", new Date(), SHAWSHANK],
+    [
+      "a cached item, with its raw poster",
+      "tt0111161",
+      new Date(),
+      SERVED_SHAWSHANK,
+    ],
     [
       "an item from a stale cache (TTL is ignored)",
       "tt0111161",
       new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      SHAWSHANK,
+      SERVED_SHAWSHANK,
     ],
     [
       "{meta:null} for an item in no cached list",
@@ -160,7 +172,7 @@ describe("meta route through each kind of Addon URL", () => {
     seedList(account.id, { id: UUID_1, source_ref: OWNER });
     cache.seed(UUID_1, [SHAWSHANK]);
 
-    expect(await meta(account.id)).toEqual({ meta: SHAWSHANK });
+    expect(await meta(account.id)).toEqual({ meta: SERVED_SHAWSHANK });
   });
 
   it("returns {meta:null} for an unknown Addon URL", async () => {
@@ -179,7 +191,11 @@ describe("meta route through each kind of Addon URL", () => {
 describe("meta route privacy", () => {
   it.each([
     ["does not reveal Connection lists through a Legacy alias", false, null],
-    ["serves Connection lists to the private Addon URL", true, SHAWSHANK],
+    [
+      "serves Connection lists to the private Addon URL",
+      true,
+      SERVED_SHAWSHANK,
+    ],
   ])("%s", async (_label, privateUrl, expected) => {
     const account = privateUrl ? seedAccount() : seedLegacyAccount(OWNER);
     if (privateUrl) seedConnection(account.id, "trakt");
