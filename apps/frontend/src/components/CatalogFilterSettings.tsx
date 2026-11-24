@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import type { ReactNode } from "react";
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import {
   CATALOG_DECADES,
@@ -59,6 +60,33 @@ const NUMERIC_FILTERS: readonly Filter[] = [
     suffix: " and above",
   },
 ];
+
+function CheckboxTile({
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm select-none transition-[background-color,border-color,color,scale] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100",
+        checked
+          ? "border-imdb bg-imdb/10 text-ink"
+          : "border-border bg-white text-black/70 hover:border-black/20 hover:bg-black/[0.02]",
+      )}
+    >
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(next) => onCheckedChange(next === true)}
+      />
+      {children}
+    </label>
+  );
+}
 
 export default function CatalogFilterSettings({
   value,
@@ -198,68 +226,33 @@ export default function CatalogFilterSettings({
               })}
             </div>
 
-            <div className="mt-3 flex items-start gap-2.5">
-              <Checkbox
-                id={`${panelId}-unreleased`}
-                aria-describedby={`${panelId}-unreleased-help`}
-                checked={value.hideUnreleased !== undefined}
-                onCheckedChange={(next) =>
-                  onChange({
-                    ...value,
-                    hideUnreleased: next === true ? true : undefined,
-                  })
-                }
-                className="mt-0.5"
-              />
-              <div>
-                <Label
-                  htmlFor={`${panelId}-unreleased`}
-                  variant="plain"
-                  className="cursor-pointer"
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-black/60">Release</p>
+              <div className="mt-1 grid gap-3 sm:grid-cols-2">
+                <CheckboxTile
+                  checked={value.hideUnreleased !== undefined}
+                  onCheckedChange={(next) =>
+                    onChange({
+                      ...value,
+                      hideUnreleased: next ? true : undefined,
+                    })
+                  }
                 >
                   Hide unreleased titles
-                </Label>
-                <p
-                  id={`${panelId}-unreleased-help`}
-                  className="text-2xs leading-snug text-muted-foreground"
-                >
-                  Hides titles with a release date in the future.
-                </p>
-              </div>
-            </div>
-
-            {value.hideUnreleased !== undefined && (
-              <div className="mt-2 ml-6.5 flex items-start gap-2.5">
-                <Checkbox
-                  id={`${panelId}-digital`}
-                  aria-describedby={`${panelId}-digital-help`}
+                </CheckboxTile>
+                <CheckboxTile
                   checked={value.hideUnreleased === "digital"}
                   onCheckedChange={(next) =>
                     onChange({
                       ...value,
-                      hideUnreleased: next === true ? "digital" : true,
+                      hideUnreleased: next ? "digital" : true,
                     })
                   }
-                  className="mt-0.5"
-                />
-                <div>
-                  <Label
-                    htmlFor={`${panelId}-digital`}
-                    variant="plain"
-                    className="cursor-pointer"
-                  >
-                    Wait for the digital release of movies
-                  </Label>
-                  <p
-                    id={`${panelId}-digital-help`}
-                    className="text-2xs leading-snug text-muted-foreground"
-                  >
-                    Hides movies released in the last year until they are out to
-                    stream, rent or buy in a country, not only in cinemas.
-                  </p>
-                </div>
+                >
+                  Wait for digital release
+                </CheckboxTile>
               </div>
-            )}
+            </div>
 
             <div className="mt-4">
               <p className="text-xs font-semibold text-black/60">
@@ -273,31 +266,20 @@ export default function CatalogFilterSettings({
                 {CATALOG_PRESETS.map((preset) => {
                   const checked = value.presets?.includes(preset.id) ?? false;
                   return (
-                    <label
+                    <CheckboxTile
                       key={preset.id}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm select-none transition-[background-color,border-color,color,scale] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100",
-                        checked
-                          ? "border-imdb bg-imdb/10 text-ink"
-                          : "border-border bg-white text-black/70 hover:border-black/20 hover:bg-black/[0.02]",
-                      )}
+                      checked={checked}
+                      onCheckedChange={(next) =>
+                        onChange({
+                          ...value,
+                          presets: next
+                            ? [...(value.presets ?? []), preset.id]
+                            : value.presets?.filter((id) => id !== preset.id),
+                        })
+                      }
                     >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) =>
-                          onChange({
-                            ...value,
-                            presets:
-                              next === true
-                                ? [...(value.presets ?? []), preset.id]
-                                : value.presets?.filter(
-                                    (id) => id !== preset.id,
-                                  ),
-                          })
-                        }
-                      />
                       {preset.label}
-                    </label>
+                    </CheckboxTile>
                   );
                 })}
               </div>
