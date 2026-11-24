@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -9,6 +9,7 @@ import {
 } from "vite-plus/test";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { movie } from "../../test/helpers/account.fixture";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import type { DigitalRelease } from "../digital-release";
 import {
@@ -19,6 +20,7 @@ import {
 } from "../digital-release";
 
 const server = useMswServer();
+const background = useBackgroundTasks();
 const series = (id: string, overrides: Parameters<typeof movie>[1] = {}) =>
   movie(id, { ...overrides, type: "series" });
 const NOW = Date.parse("2026-11-24T12:00:00.000Z");
@@ -178,6 +180,25 @@ describe("withDigitalReleases", () => {
       expect.arrayContaining(movies.slice(50).map((meta) => meta.id)),
     );
     expect(lookups).toHaveLength(50);
+  });
+
+  it("stops waiting for slow lookups and keeps their answers for the next read", async () => {
+    server.use(
+      http.get(
+        "https://api.themoviedb.org/3/movie/:id/release_dates",
+        async () => {
+          await delay(200);
+          return HttpResponse.json({ id: 1, results: [] });
+        },
+      ),
+    );
+    expect(
+      await withDigitalReleases([recent], () => undefined, NOW, 20),
+    ).toEqual([recent]);
+
+    await background.settle();
+    const [checked] = await withDigitalReleases([recent], () => undefined, NOW);
+    expect(checked.digitalCheckedAt).toBe(iso(NOW));
   });
 
   it("leaves a movie unchecked when TMDB fails or is not configured", async () => {

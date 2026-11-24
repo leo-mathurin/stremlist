@@ -1,5 +1,6 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
+import { scheduleBackgroundTask } from "../lib/background";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { isTmdbConfigured, tmdbGet } from "./tmdb";
 
@@ -15,6 +16,7 @@ const DAY_MS = 24 * 60 * 60_000;
 const RECENT_MS = 365 * DAY_MS;
 const RECHECK_MS = DAY_MS;
 const MAX_LOOKUPS = 50;
+const LOOKUP_BUDGET_MS = 5_000;
 const CONCURRENCY = 6;
 const MEMORY_MAX_ENTRIES = 5000;
 const DIGITAL_OR_PHYSICAL_RELEASE_TYPES = new Set([4, 5]);
@@ -117,7 +119,8 @@ function digitalReleaseOf(meta: DigitalRelease) {
  * The metas with the digital release date of each recent movie, from the
  * previous cache generation, memory, or TMDB. Up to the cap, unchecked movies
  * are asked about first, then the oldest checks. A movie still to come out in
- * cinemas is not asked about: the cinema rule already hides it.
+ * cinemas is not asked about: the cinema rule already hides it. Lookups get
+ * at most `budgetMs`; the rest go on in the background for the next read.
  */
 export async function withDigitalReleases<
   T extends StremioMeta & DigitalRelease,
@@ -125,6 +128,7 @@ export async function withDigitalReleases<
   metas: T[],
   previous: (id: string) => DigitalRelease | undefined,
   now = Date.now(),
+  budgetMs = LOOKUP_BUDGET_MS,
 ) {
   const found = new Map<string, DigitalRelease>();
   const missing = new Map<string, string>();
@@ -148,7 +152,7 @@ export async function withDigitalReleases<
       .sort(([, a], [, b]) => a.localeCompare(b))
       .slice(0, MAX_LOOKUPS)
       .map(([id]) => id);
-    await mapWithConcurrency(ids, CONCURRENCY, async (id) => {
+    const work = mapWithConcurrency(ids, CONCURRENCY, async (id) => {
       try {
         const released = await fetchDigitalRelease(id);
         const release = {
@@ -164,6 +168,15 @@ export async function withDigitalReleases<
         );
       }
     });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      work,
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, budgetMs);
+      }),
+    ]);
+    clearTimeout(timer);
+    scheduleBackgroundTask(() => work);
   }
 
   if (found.size === 0) return metas;
