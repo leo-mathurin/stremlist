@@ -169,6 +169,17 @@ test("an excluded genre changes the signature when it removes a genre option", (
   );
 });
 
+test("turning the Catalog name prefix off changes the signature", () => {
+  const rows = [list([FIRST])];
+  assert.notEqual(
+    getListReinstallSignature(rows, genres, {
+      newTitles: false,
+      catalogNamePrefix: false,
+    }),
+    getListReinstallSignature(rows, genres, { newTitles: false }),
+  );
+});
+
 test("the order of the Lists changes the signature", () => {
   const other = list([SECOND], {
     id: "00000000-0000-4000-8000-000000000002",

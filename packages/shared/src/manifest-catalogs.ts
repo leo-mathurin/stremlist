@@ -89,10 +89,17 @@ function isV1Setup(lists: TitledList[]) {
   );
 }
 
-function manifestCatalogEntries(lists: ManifestList[]) {
-  const v1 = isV1Setup(lists);
+/** The prefix of the Catalog names, unless the Account turned it off. */
+export const CATALOG_NAME_PREFIX = "Stremlist";
+
+function manifestCatalogEntries(lists: ManifestList[], namePrefix: boolean) {
+  const v1 = namePrefix && isV1Setup(lists);
   return lists.flatMap((list) => {
-    const name = v1 ? "Stremlist" : `Stremlist ${listTitle(list)}`;
+    const name = v1
+      ? CATALOG_NAME_PREFIX
+      : namePrefix
+        ? `${CATALOG_NAME_PREFIX} ${listTitle(list)}`
+        : listTitle(list);
     const excluded = new Set(list.catalogSettings?.excludedGenres);
     const genres = [
       ...new Set([
@@ -126,6 +133,8 @@ interface NewTitlesCatalogEntry {
 export interface NewTitlesCatalogOptions {
   newTitles: boolean;
   newTitlesSettings?: NewTitlesSettings;
+  /** Start each Catalog name with "Stremlist" (the default). */
+  catalogNamePrefix?: boolean;
 }
 
 /** Keep the pre-existing visible types until the account saves list settings. */
@@ -141,9 +150,17 @@ export function defaultNewTitlesSettings(
   } satisfies NewTitlesSettings;
 }
 
-function newTitlesCatalogEntries(settings: NewTitlesSettings) {
+function newTitlesCatalogEntries(
+  settings: NewTitlesSettings,
+  namePrefix: boolean,
+) {
+  const title = settings.catalogTitle.trim();
   const name =
-    settings.catalogTitle.trim() || DEFAULT_NEW_TITLES_SETTINGS.catalogTitle;
+    title && title !== DEFAULT_NEW_TITLES_SETTINGS.catalogTitle
+      ? title
+      : namePrefix
+        ? DEFAULT_NEW_TITLES_SETTINGS.catalogTitle
+        : "New titles";
   return listCatalogs(settings).map(({ type, preset }) => {
     const label = CATALOG_PRESETS.find((entry) => entry.id === preset)?.label;
     return {
@@ -160,7 +177,8 @@ export function addonCatalogEntries(
   lists: ManifestList[],
   options: NewTitlesCatalogOptions,
 ) {
-  const entries = manifestCatalogEntries(lists);
+  const namePrefix = options.catalogNamePrefix ?? true;
+  const entries = manifestCatalogEntries(lists, namePrefix);
   if (
     !options.newTitles ||
     (!options.newTitlesSettings && lists.length === 0)
@@ -173,7 +191,7 @@ export function addonCatalogEntries(
     .reduce((count, list) => count + listCatalogs(list).length, 0);
   return [
     ...entries.slice(0, before),
-    ...newTitlesCatalogEntries(settings),
+    ...newTitlesCatalogEntries(settings, namePrefix),
     ...entries.slice(before),
   ];
 }

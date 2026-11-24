@@ -15,6 +15,7 @@ import {
   getProvider,
   legacyAccountId,
   OWNER,
+  postConfig,
   postJson,
   resetConfigTest,
   seedWatchlist,
@@ -153,6 +154,41 @@ describe("List CRUD via the config API", () => {
         configBody,
       );
       expect(config.access).toBe("private");
+    });
+
+    it("saves the Catalog name prefix choice and names the manifest Catalogs with it", async () => {
+      const res = await createAccount({
+        catalogNamePrefix: false,
+        lists: [
+          { sourceRef: OWNER, catalogTitle: "Picks", sortOption: "title-asc" },
+        ],
+      });
+      expect(res.status).toBe(200);
+      const { accountId } = await readJson(res, createdAccountBody);
+      const config = await readJson(await getConfig(accountId), configBody);
+      expect(config.catalogNamePrefix).toBe(false);
+      const names = async () =>
+        (
+          await readJson(
+            await app.request(`/${accountId}/manifest.json`),
+            stremioManifest,
+          )
+        ).catalogs.map((catalog) => catalog.name);
+      expect(await names()).toEqual(["Picks", "Picks"]);
+
+      const lists = config.lists.map((list) => ({
+        id: list.id,
+        sourceRef: list.sourceRef,
+        catalogTitle: list.catalogTitle,
+        sortOption: list.sortOption,
+      }));
+      expect((await postConfig(accountId, { lists })).status).toBe(200);
+      expect(await names()).toEqual(["Picks", "Picks"]);
+      expect(
+        (await postConfig(accountId, { lists, catalogNamePrefix: true }))
+          .status,
+      ).toBe(200);
+      expect(await names()).toEqual(["Stremlist Picks", "Stremlist Picks"]);
     });
 
     it("creates an Account without Lists, so Simkl users can connect first", async () => {

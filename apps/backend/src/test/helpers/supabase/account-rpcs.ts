@@ -100,6 +100,8 @@ function replaceAccountConfig(args: RpcArgs) {
   account.new_titles_settings =
     args.p_new_titles_settings ?? account.new_titles_settings;
   account.poster_source = args.p_poster_source ?? account.poster_source;
+  account.catalog_name_prefix =
+    args.p_catalog_name_prefix ?? account.catalog_name_prefix;
 
   return {
     data: [{ previous_lists: previous, lists: listsOf(accountId) }],
@@ -132,6 +134,7 @@ function createAccountWithConfig(args: RpcArgs) {
     p_new_titles_catalog: args.p_new_titles_catalog,
     p_new_titles_settings: args.p_new_titles_settings,
     p_poster_source: args.p_poster_source,
+    p_catalog_name_prefix: args.p_catalog_name_prefix,
   });
   if (saved.error) {
     db.delete("accounts", (row) => row.id === accountId);

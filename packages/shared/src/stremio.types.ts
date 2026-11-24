@@ -107,6 +107,11 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   rpdbApiKey: string | null;
   /** Absent in an answer of an older backend: IMDb. */
   posterSource?: PosterSource;
+  /**
+   * Whether Catalog names start with "Stremlist". Absent in an answer of an
+   * older backend: true.
+   */
+  catalogNamePrefix?: boolean;
   lists: ConfigList[];
   actions: { enabled: boolean; providers: ProviderId[] };
   newTitles: {
@@ -138,6 +143,8 @@ export interface AccountConfigInput {
   rpdbApiKey?: string;
   /** Omitted: keep the saved source (IMDb for a new Account). */
   posterSource?: PosterSource;
+  /** Omitted: keep the saved choice (true for a new Account). */
+  catalogNamePrefix?: boolean;
   lists: ConfigListInput[];
   actions?: { enabled: boolean; providers: ProviderId[] };
   newTitles?: { enabled: boolean; settings?: NewTitlesSettings };

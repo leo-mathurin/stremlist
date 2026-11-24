@@ -81,6 +81,7 @@ const EMPTY_FORM: AccountForm = {
   lists: [],
   rpdbApiKey: "",
   posterSource: DEFAULT_POSTER_SOURCE,
+  catalogNamePrefix: true,
   actionsEnabled: false,
   actions: { order: [], selected: [] },
   newTitles: NEW_TITLES_OFF,
@@ -188,6 +189,7 @@ export function useAccountConfiguration(
   const [posterSource, setPosterSource] = useState<PosterSource>(
     DEFAULT_POSTER_SOURCE,
   );
+  const [catalogNamePrefix, setCatalogNamePrefix] = useState(true);
   const [access, setAccess] = useState<AccountAccess>(
     accountKey ? "private" : "new",
   );
@@ -239,6 +241,7 @@ export function useAccountConfiguration(
     lists,
     rpdbApiKey,
     posterSource,
+    catalogNamePrefix,
     actionsEnabled,
     actions,
     newTitles,
@@ -258,6 +261,7 @@ export function useAccountConfiguration(
         resetRows(draft.lists, draft.newTitles);
         setRpdbApiKey(draft.rpdbApiKey);
         setPosterSource(draft.posterSource);
+        setCatalogNamePrefix(draft.catalogNamePrefix);
       }
       setStatus("ready");
     } else if (accountKey !== createdKey) {
@@ -321,6 +325,7 @@ export function useAccountConfiguration(
           lists: rows,
           rpdbApiKey: data.rpdbApiKey ?? "",
           posterSource: data.posterSource ?? DEFAULT_POSTER_SOURCE,
+          catalogNamePrefix: data.catalogNamePrefix ?? true,
           actionsEnabled: data.actions.enabled,
           actions: saved,
           newTitles: newTitlesFromAnswer(data.newTitles),
@@ -345,6 +350,7 @@ export function useAccountConfiguration(
         setLoadedStremio(data.stremio);
         setRpdbApiKey(shown.rpdbApiKey);
         setPosterSource(shown.posterSource);
+        setCatalogNamePrefix(shown.catalogNamePrefix);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
         applyServerState(data);
@@ -357,6 +363,7 @@ export function useAccountConfiguration(
           rows,
           newTitles: storedForm.newTitles,
           actionsLive: data.actions.enabled && saved.selected.length > 0,
+          catalogNamePrefix: storedForm.catalogNamePrefix,
         });
         setStatus("ready");
       })
@@ -386,6 +393,7 @@ export function useAccountConfiguration(
           rows: lists,
           newTitles,
           actionsLive,
+          catalogNamePrefix,
         });
 
   const adoptStoredLists = (submitted: ListFormRow[], stored: StoredLists) => {
@@ -438,6 +446,7 @@ export function useAccountConfiguration(
         rows: savedRows,
         newTitles: submitted.newTitles,
         actionsLive: false,
+        catalogNamePrefix: submitted.catalogNamePrefix,
       },
     };
     setCreatedKey(body.accountId);
@@ -459,6 +468,7 @@ export function useAccountConfiguration(
       rows: savedRows,
       newTitles: submitted.newTitles,
       actionsLive,
+      catalogNamePrefix: submitted.catalogNamePrefix,
     });
     setNewTitlesSummary(body.newTitles);
     setNewTitlesRevision((revision) => revision + 1);
@@ -649,6 +659,8 @@ export function useAccountConfiguration(
     setRpdbApiKey,
     posterSource,
     setPosterSource,
+    catalogNamePrefix,
+    setCatalogNamePrefix,
     access,
     accountId,
     upgradedTo,

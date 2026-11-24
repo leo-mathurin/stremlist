@@ -90,6 +90,8 @@ export const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
   /** Omitted by older clients: the saved source stays. */
   posterSource: z.enum(POSTER_SOURCES).optional(),
+  /** Omitted by older clients: the saved choice stays. */
+  catalogNamePrefix: z.boolean().optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
   newTitles: z

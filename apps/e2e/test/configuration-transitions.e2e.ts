@@ -224,6 +224,35 @@ test(
 );
 
 test(
+  "turning off the Stremlist prefix renames the Catalogs and survives a reload",
+  { tags: ["local"] },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    const id = await seedList(accountId, {
+      sourceRef: CATALOG_FIXTURE_USER,
+      catalogTitle: "Release QA",
+      position: 0,
+    });
+    await seedCachedCatalog(id, CATALOG_TITLES);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Stremlist Release QA"],
+    ]);
+    await openConfigure(page, accountId, "Release QA");
+    const prefix = page.getByRole("checkbox", {
+      name: "Start catalog names with Stremlist",
+    });
+    await prefix.uncheck();
+    await saveConfigure(page);
+    expect((await getConfig(accountId)).body.catalogNamePrefix).toBe(false);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Release QA"],
+    ]);
+    await page.reload();
+    await expect(prefix).not.toBeChecked();
+  },
+);
+
+test(
   "an untitled List keeps its Stremio name when Lists are added before it",
   { tags: ["local"] },
   async ({ page }) => {

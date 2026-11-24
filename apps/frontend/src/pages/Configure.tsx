@@ -36,6 +36,7 @@ import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesRow from "../components/NewTitlesRow";
+import CatalogNameSettings from "../components/CatalogNameSettings";
 import PosterSourceSettings from "../components/PosterSourceSettings";
 import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
@@ -757,6 +758,13 @@ export default function Configure() {
                   onChange={config.setPosterSource}
                   rpdbApiKey={config.rpdbApiKey}
                   onRpdbApiKeyChange={config.setRpdbApiKey}
+                />
+              </div>
+
+              <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
+                <CatalogNameSettings
+                  value={config.catalogNamePrefix}
+                  onChange={config.setCatalogNamePrefix}
                 />
               </div>
 

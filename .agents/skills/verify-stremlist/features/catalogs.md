@@ -10,6 +10,7 @@ An Account previews Titles before saving and installs an Addon URL so Stremio ca
 - `catalogs.install` copies the Addon URL, handles clipboard denial, and opens Stremio Web installation.
 - `catalogs.providers` serves the manifest, Catalogs, meta, and streams of a List of every Provider, and renders them in Stremio Web.
 - `catalogs.posters` saves the Poster source (IMDb, TMDB, TheTVDB, or RPDB with its key) and applies it to previews, Catalogs, meta and New titles. The RPDB key field shows for RPDB only, and the key stays saved under another source. A missing TMDB or TheTVDB poster, a failure of either, or RPDB without a key keeps the IMDb poster. Example posters open on request, in one row that scrolls sideways at any width.
+- `catalogs.names` saves the Account choice "Start catalog names with Stremlist" (on by default) and names the manifest Catalogs with or without the prefix. Turning it off asks for a reinstall. `toolkit/ui.e2e.ts` checks the saved body and the reinstall notice; `test/configuration-transitions.e2e.ts` checks the saved row, the manifest names and the reload.
 - `catalogs.queue` shows the Letterboxd queue state on the link check, the preview, and the sync line, and the Stremio card "Your Letterboxd list is on its way" when a Catalog without a cache waits more than 10 s.
 
 ## How to get to it (user POV)

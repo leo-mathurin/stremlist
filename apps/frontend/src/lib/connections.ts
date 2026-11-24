@@ -88,10 +88,14 @@ export function dropDraft() {
   } catch {}
 }
 
-type KeptForm = Omit<AccountForm, "newTitles" | "posterSource"> & {
+type KeptForm = Omit<
+  AccountForm,
+  "newTitles" | "posterSource" | "catalogNamePrefix"
+> & {
   newTitles?: unknown;
   newTitlesEnabled?: unknown;
   posterSource?: unknown;
+  catalogNamePrefix?: unknown;
 };
 
 function isKeptForm(form: unknown): form is KeptForm {
@@ -129,6 +133,7 @@ export function readDraft(accountId: string | null) {
         : form.rpdbApiKey.trim()
           ? "rpdb"
           : DEFAULT_POSTER_SOURCE,
+      catalogNamePrefix: form.catalogNamePrefix !== false,
     } satisfies AccountForm;
   } catch {
     return null;
