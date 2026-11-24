@@ -6,6 +6,7 @@ import {
 } from "@stremlist/shared/providers";
 import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
+import { OWN_LIST_FRESHNESS_MS } from "./freshness";
 import { revokeToken } from "./oauth-app";
 import { simklActions } from "./simkl/actions";
 import {
@@ -53,8 +54,6 @@ export function resetSimklState() {
   clearCalendarReads();
 }
 
-const LIBRARY_FRESHNESS_MS = 60 * 60_000;
-
 /**
  * Simkl: the Connection's own statuses (`me/plantowatch`, `me/watching`,
  * `me/completed`, `me/hold`, `me/dropped`, with movies, shows and anime),
@@ -71,10 +70,10 @@ const LIBRARY_FRESHNESS_MS = 60 * 60_000;
  */
 export const simklProvider: ProviderAdapter = {
   id: "simkl",
-  freshnessMs: LIBRARY_FRESHNESS_MS,
+  freshnessMs: OWN_LIST_FRESHNESS_MS,
 
   freshnessFor(ref) {
-    return chartFreshness(ref) ?? LIBRARY_FRESHNESS_MS;
+    return chartFreshness(ref) ?? OWN_LIST_FRESHNESS_MS;
   },
 
   async validateSource(ref, ctx) {

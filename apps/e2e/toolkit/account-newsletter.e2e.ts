@@ -31,7 +31,7 @@ test(
             ...row,
             sourceRef: "ur99887766",
             catalogTitle: "Second account",
-            catalogSettings: { genre: "Comedy" },
+            catalogSettings: { genres: ["Comedy"] },
           },
         ],
       },
@@ -56,7 +56,7 @@ test(
     await openFilters(screen, browser, "Second account");
     await expect(title).toHaveValue("Second account");
     await expect(
-      screen.getByRole("combobox", "Genre", { exact: true }),
+      screen.getByRole("button", "Show genres", { exact: true }),
     ).toHaveText("Comedy");
     await expect(screen.getByText("Discarded draft")).not.toBeVisible();
   },

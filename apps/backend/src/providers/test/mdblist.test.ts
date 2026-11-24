@@ -819,6 +819,17 @@ describe("mdblistProvider.fetchSource", () => {
   });
 });
 
+describe("mdblistProvider.freshnessFor", () => {
+  it("refreshes the user's own lists after 10 minutes, other lists after 6 hours", () => {
+    const freshness = (ref: string) => mdblistProvider.freshnessFor?.(ref);
+    expect(freshness("me/watchlist")).toBe(10 * 60_000);
+    expect(freshness("me/lists/42")).toBe(10 * 60_000);
+    expect(freshness("me/up-next")).toBe(10 * 60_000);
+    expect(freshness("lists/42")).toBe(6 * 60 * 60_000);
+    expect(freshness("official/top-movies")).toBe(6 * 60 * 60_000);
+  });
+});
+
 describe("mdblistProvider.resolutionKey", () => {
   it("keys entries by TMDB ID and media type", () => {
     expect(

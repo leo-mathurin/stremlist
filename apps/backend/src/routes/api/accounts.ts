@@ -87,7 +87,7 @@ const accounts = new Hono()
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
       const body = c.req.valid("json");
-      const { rpdbApiKey, lists, newTitles } = body;
+      const { rpdbApiKey, lists, newTitles, catalogNamePrefix } = body;
       const posterSource = savedPosterSource(body);
       const fresh = lists.map((list) => ({ ...list, id: undefined }));
       const normalized = await normalizeOrReject(c, fresh, {
@@ -101,7 +101,7 @@ const accounts = new Hono()
         const { accountId, lists: saved } = await createAccountWithConfig(
           normalized,
           rpdbKey(rpdbApiKey),
-          { newTitles, posterSource },
+          { newTitles, posterSource, catalogNamePrefix },
         );
         scheduleBackgroundTask(() =>
           prewarmLists(accountId, saved, true, {
@@ -144,6 +144,7 @@ const accounts = new Hono()
         accountId: access.via === "private" ? account.id : null,
         rpdbApiKey: account.rpdbApiKey,
         posterSource: account.posterSource,
+        catalogNamePrefix: account.catalogNamePrefix,
         lists,
         ...sync,
         actions: {
@@ -180,7 +181,7 @@ const accounts = new Hono()
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
       const body = c.req.valid("json");
-      const { rpdbApiKey, lists, actions, newTitles } = body;
+      const { rpdbApiKey, lists, actions, newTitles, catalogNamePrefix } = body;
       const posterSource = savedPosterSource(body);
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
@@ -225,6 +226,7 @@ const accounts = new Hono()
                 : undefined,
             newTitles,
             posterSource,
+            catalogNamePrefix,
           },
         );
       } catch (error) {

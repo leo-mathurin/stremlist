@@ -68,6 +68,7 @@ interface ListBody {
 
 interface ConfigBody {
   rpdbApiKey?: string;
+  catalogNamePrefix?: boolean;
   lists: ListBody[];
   actions?: { enabled: boolean; providers: ProviderId[] };
 }

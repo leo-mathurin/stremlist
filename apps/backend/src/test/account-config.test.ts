@@ -89,6 +89,8 @@ describe("List CRUD via the config API", () => {
     { maxRuntime: -1 },
     { decade: 1995 },
     { genre: "" },
+    { genres: [""] },
+    { excludedGenres: ["a".repeat(101)] },
   ])("rejects invalid catalog settings %j", async (catalogSettings) => {
     seedWatchlist({ id: UUID_1 });
     const response = await postConfig(OWNER, {

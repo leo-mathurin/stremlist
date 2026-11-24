@@ -103,6 +103,15 @@ BEGIN
     'An omitted New titles setting keeps the stored value';
   ASSERT (SELECT new_titles_settings FROM public.accounts WHERE id = 'sl_configtransactiontest00') = new_titles,
     'An older client does not clear the detection list settings';
+
+  -- The Catalog name prefix is saved in the same transaction; NULL keeps it.
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+    result.lists, NULL, NULL, NULL, NULL, NULL, false);
+  ASSERT NOT (SELECT catalog_name_prefix FROM public.accounts WHERE id = 'sl_configtransactiontest00');
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+    result.lists, NULL, NULL);
+  ASSERT NOT (SELECT catalog_name_prefix FROM public.accounts WHERE id = 'sl_configtransactiontest00'),
+    'An omitted Catalog name prefix keeps the stored value';
   BEGIN
     PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
       jsonb_set(result.lists, '{0,id}', '"44444444-4444-4444-8444-444444444444"'), NULL, NULL, false);
@@ -115,9 +124,9 @@ BEGIN
 
   ASSERT public.generate_account_id() ~ '^sl_[0-9A-Za-z]{22}$';
 
-  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
   ASSERT NOT has_function_privilege('anon', 'public.claim_connection_refresh(text,text,integer,uuid)', 'EXECUTE');
 END;
 $$;

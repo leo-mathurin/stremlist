@@ -7,7 +7,10 @@ export const CATALOG_PRESETS = [
 export type CatalogPreset = (typeof CATALOG_PRESETS)[number]["id"];
 
 export interface CatalogSettings {
-  genre?: string;
+  /** Show only the Titles that have at least one of these genres. */
+  genres?: string[];
+  /** Hide the Titles that have any of these genres. */
+  excludedGenres?: string[];
   decade?: number;
   maxRuntime?: number;
   minRating?: number;
@@ -20,7 +23,8 @@ export interface CatalogSettings {
 }
 
 const CATALOG_FILTER_KEYS = [
-  "genre",
+  "genres",
+  "excludedGenres",
   "decade",
   "maxRuntime",
   "minRating",

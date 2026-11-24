@@ -112,6 +112,7 @@ describe("List CRUD via the config API", () => {
           p_action_providers: null,
           p_new_titles_catalog: null,
           p_poster_source: "rpdb",
+          p_catalog_name_prefix: null,
         },
       ]);
       const expected = [
@@ -189,7 +190,8 @@ describe("List CRUD via the config API", () => {
 
     it("passes combined filters, custom values and presets through unchanged", async () => {
       const catalogSettings: CatalogSettings = {
-        genre: "Comedy",
+        genres: ["Comedy", "Drama"],
+        excludedGenres: ["Horror"],
         decade: 2090,
         maxRuntime: 95,
         minRating: 7.2,

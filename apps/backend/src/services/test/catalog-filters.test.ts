@@ -1,3 +1,4 @@
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { describe, expect, it } from "vite-plus/test";
 import { movie } from "../../test/helpers/account.fixture";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
@@ -79,7 +80,6 @@ it("intersects saved and dropdown constraints rather than overwriting either", (
     { ...metas[1], genres: ["Drama"] },
   ];
   for (const [filter, settings, ids] of [
-    ["Comedy", { genre: "Drama" }, ["tt1"]],
     ["1990s", { decade: 2000 }, []],
     ["120 min or less", { maxRuntime: 90 }, ["tt1"]],
     ["90 min or less", { maxRuntime: 120 }, ["tt1"]],
@@ -91,6 +91,39 @@ it("intersects saved and dropdown constraints rather than overwriting either", (
       filterCatalog(both, selection.filters).map((meta) => meta.id),
     ).toEqual(ids);
   }
+  for (const [filter, settings, ids] of [
+    ["Comedy", { genres: ["Drama"] }, ["tt1"]],
+    ["Drama", { excludedGenres: ["Comedy"] }, ["tt2"]],
+  ] satisfies [string, CatalogSettings, string[]][]) {
+    const selection = resolveCatalogSelection("added_at-asc", settings, filter);
+    expect(
+      filterCatalog(both, selection.filters).map((meta) => meta.id),
+    ).toEqual(ids);
+  }
+});
+
+it("keeps Titles with any included genre and hides Titles with any excluded genre", () => {
+  const titles = [
+    { ...metas[0], id: "tt30", genres: ["Horror"] },
+    { ...metas[0], id: "tt31", genres: ["Thriller", "Comedy"] },
+    { ...metas[0], id: "tt32", genres: ["Drama"] },
+    { ...metas[0], id: "tt33", genres: ["Horror", "Thriller"] },
+  ];
+  const ids = (settings: CatalogSettings) =>
+    filterCatalog(titles, [settings]).map((meta) => meta.id);
+  expect(ids({ genres: ["Horror", "Thriller"] })).toEqual([
+    "tt30",
+    "tt31",
+    "tt33",
+  ]);
+  expect(ids({ excludedGenres: ["Comedy", "Drama"] })).toEqual([
+    "tt30",
+    "tt33",
+  ]);
+  expect(
+    ids({ genres: ["Horror", "Thriller"], excludedGenres: ["Comedy"] }),
+  ).toEqual(["tt30", "tt33"]);
+  expect(ids({ genres: ["Horror"], excludedGenres: ["Horror"] })).toEqual([]);
 });
 
 it("hides unreleased Titles: a future date, or no date and a later year", () => {

@@ -15,6 +15,7 @@ import {
   validateImdbRatings,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
+import { OWN_LIST_FRESHNESS_MS, SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -26,11 +27,6 @@ function readSource(ref: string) {
   return fetchWatchlist(ref);
 }
 
-const CACHE_TTL_MS =
-  (Number.isFinite(Number(process.env.CACHE_TTL_MINUTES))
-    ? Number(process.env.CACHE_TTL_MINUTES)
-    : 30) * 60_000;
-
 /**
  * IMDb: public watchlists (`ur…`, or a `p.` handle resolved to `ur…`), public
  * ratings (`ur…/ratings`), public lists (`ls…`) and the built-in charts
@@ -39,7 +35,11 @@ const CACHE_TTL_MS =
  */
 export const imdbProvider: ProviderAdapter = {
   id: "imdb",
-  freshnessMs: CACHE_TTL_MS,
+  freshnessMs: OWN_LIST_FRESHNESS_MS,
+
+  freshnessFor(ref) {
+    return isChartId(ref) ? SHARED_LIST_FRESHNESS_MS : OWN_LIST_FRESHNESS_MS;
+  },
 
   async validateSource(ref) {
     if (isChartId(ref)) {

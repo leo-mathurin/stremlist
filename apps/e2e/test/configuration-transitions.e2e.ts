@@ -145,7 +145,7 @@ test(
         catalogTitle: "Release QA",
         displayMode: "movie",
         catalogSettings: {
-          genre: "Drama",
+          genres: ["Drama"],
           presets: ["rated", "short", "shuffle"],
         },
       }),
@@ -164,7 +164,7 @@ test(
     }
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
-      genre: "Drama",
+      genres: ["Drama"],
       presets: [],
     });
     expect(await manifestCatalogIds(accountId)).toEqual([catalogId]);
@@ -178,7 +178,7 @@ test(
     await page.reload();
     await openFilters(page);
     await expect(
-      page.getByRole("combobox", { name: "Genre", exact: true }),
+      page.getByRole("button", { name: "Show genres", exact: true }),
     ).toHaveText("Drama");
     for (const name of presetLabels)
       await expect(
@@ -220,6 +220,35 @@ test(
     await page.getByRole("button", { name: "Remove Keep me" }).click();
     await expect(page.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(page)).toBeDisabled();
+  },
+);
+
+test(
+  "turning off the Stremlist prefix renames the Catalogs and survives a reload",
+  { tags: ["local"] },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    const id = await seedList(accountId, {
+      sourceRef: CATALOG_FIXTURE_USER,
+      catalogTitle: "Release QA",
+      position: 0,
+    });
+    await seedCachedCatalog(id, CATALOG_TITLES);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Stremlist Release QA"],
+    ]);
+    await openConfigure(page, accountId, "Release QA");
+    const prefix = page.getByRole("checkbox", {
+      name: "Start catalog names with Stremlist",
+    });
+    await prefix.uncheck();
+    await saveConfigure(page);
+    expect((await getConfig(accountId)).body.catalogNamePrefix).toBe(false);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Release QA"],
+    ]);
+    await page.reload();
+    await expect(prefix).not.toBeChecked();
   },
 );
 
@@ -343,7 +372,13 @@ test(
     const { accountId, catalogId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");
     await openFilters(page);
-    await choose(page, "Genre", "Comedy");
+    await page
+      .getByRole("button", { name: "Show genres", exact: true })
+      .click();
+    await page
+      .getByRole("menuitemcheckbox", { name: "Comedy", exact: true })
+      .click();
+    await page.keyboard.press("Escape");
     await choose(page, "Decade", "2020s");
     await saveConfigure(page);
     expect((await getCatalog(accountId, "movie", catalogId)).metas).toEqual([]);
@@ -355,7 +390,7 @@ test(
     await page.reload();
     await openFilters(page);
     await expect(
-      page.getByRole("combobox", { name: "Genre", exact: true }),
+      page.getByRole("button", { name: "Show genres", exact: true }),
     ).toHaveText("Comedy");
     await expect(
       page.getByRole("combobox", { name: "Decade", exact: true }),

@@ -47,6 +47,7 @@ export async function buildAccountManifest(access: AccountAccess, key: string) {
     catalogs: buildManifestCatalogs(await withAvailableGenres(lists), {
       newTitles: account.newTitlesCatalog,
       newTitlesSettings: account.newTitlesSettings,
+      catalogNamePrefix: account.catalogNamePrefix,
     }),
     config: [
       {

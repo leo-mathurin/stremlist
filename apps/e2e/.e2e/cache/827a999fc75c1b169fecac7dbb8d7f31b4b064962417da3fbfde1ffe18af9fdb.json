@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:57:10.099Z",
+  "createdAt": "2026-11-24T19:28:11.831Z",
   "payload": {
     "actions": [
       {
@@ -13,31 +13,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap combobox \"Genre\"",
-        "target": {
-          "role": "combobox",
-          "name": "Genre"
-        }
-      },
-      {
-        "name": "press",
-        "summary": "press \"Escape\" on option \"All genres\"",
-        "target": {
-          "role": "option",
-          "name": "All genres"
-        },
-        "key": "Escape"
-      },
-      {
-        "name": "tap",
-        "summary": "tap button \"Save\" (2 of 2)",
+        "summary": "tap button \"Save\"",
         "target": {
           "role": "button",
-          "name": "Save",
-          "position": {
-            "index": 1,
-            "of": 2
-          }
+          "name": "Save"
         }
       }
     ],
@@ -53,7 +32,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The genre filter is cleared (All genres), and Top rated remains checked. I tapped Save; the visible confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "The current catalog settings show all filters cleared (all genres, decades, runtimes, and ratings unrestricted; hide-unreleased off) while Top rated remains checked. I tapped Save and the Save button became disabled, indicating the settings were saved.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -90,6 +69,6 @@
         ]
       }
     ],
-    "endWaitMs": 15369
+    "endWaitMs": 12654
   }
 }

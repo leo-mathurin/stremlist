@@ -122,6 +122,7 @@ describe("configBody", () => {
     ],
     rpdbApiKey: "key",
     posterSource: "tmdb",
+    catalogNamePrefix: false,
     actionsEnabled: true,
     actions: { order: ["simkl", "trakt"], selected: ["trakt", "simkl"] },
     newTitles: {
@@ -151,6 +152,7 @@ describe("configBody", () => {
     const body = configBody(form, "private");
     assert.equal(body.rpdbApiKey, "key");
     assert.equal(body.posterSource, "tmdb");
+    assert.equal(body.catalogNamePrefix, false);
     assert.deepEqual(body.newTitles, {
       enabled: true,
       settings: {
@@ -181,6 +183,10 @@ describe("configBody", () => {
       );
       assert.equal(
         hasUnsavedChanges(form, { ...form, posterSource: "imdb" }, "legacy"),
+        true,
+      );
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, catalogNamePrefix: true }, "legacy"),
         true,
       );
     });
@@ -220,7 +226,7 @@ test("rows of saved Lists keep what the page edits and drop the rest", () => {
     position: 0,
     availableGenres: ["Drama"],
     sourceGenres: [{ movie: ["Drama"], series: [] }],
-    catalogSettings: { genre: "Drama" },
+    catalogSettings: { genres: ["Drama"] },
     mergedSources: [{ provider: "imdb", sourceRef: "ls1000002" }],
     sourceLabel: "Mine",
   };
@@ -236,7 +242,7 @@ test("rows of saved Lists keep what the page edits and drop the rest", () => {
       catalogTitle: "Mine",
       sortOption: "title-asc",
       displayMode: "movie",
-      catalogSettings: { genre: "Drama" },
+      catalogSettings: { genres: ["Drama"] },
       availableGenres: ["Drama"],
       mergedSources: [{ provider: "imdb", sourceRef: "ls1000002" }],
       sourceLabel: "Mine",
@@ -251,7 +257,7 @@ test("rows of saved Lists keep what the page edits and drop the rest", () => {
       sortOption: "title-asc",
       displayMode: "movie",
       position: 0,
-      catalogSettings: { genre: "Drama" },
+      catalogSettings: { genres: ["Drama"] },
       mergedSources: [{ provider: "imdb", sourceRef: "ls1000002" }],
       sourceLabel: "Mine",
     },

@@ -11,6 +11,7 @@ import {
   RateLimiter,
   sourceErrorFromHttp,
 } from "./http";
+import { OWN_LIST_FRESHNESS_MS, SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import { oauthClient, revokeToken } from "./oauth-app";
 import { readPages } from "./paging";
 import type { SyncBody } from "./sync-payload";
@@ -956,7 +957,13 @@ export async function listMdblistUserSources(connection: ConnectionAccess) {
  */
 export const mdblistProvider: ProviderAdapter = {
   id: "mdblist",
-  freshnessMs: 60 * 60_000,
+  freshnessMs: SHARED_LIST_FRESHNESS_MS,
+
+  freshnessFor(ref) {
+    return ref.startsWith("me/")
+      ? OWN_LIST_FRESHNESS_MS
+      : SHARED_LIST_FRESHNESS_MS;
+  },
   validateSource,
   fetchSource,
   listConnectionSources: listMdblistUserSources,

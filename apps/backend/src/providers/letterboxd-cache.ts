@@ -5,6 +5,7 @@ import {
   writeJson,
   isPreconditionFailed,
 } from "../lib/r2-json";
+import { SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import { LetterboxdBusyError } from "./letterboxd-gate";
 import { letterboxdSnapshotSchema } from "./letterboxd-page";
 import { currentReadPriority, currentReadQueue } from "./read-priority";
@@ -25,7 +26,7 @@ const unavailable = () =>
     "Letterboxd is temporarily unavailable",
   );
 
-export const LETTERBOXD_FRESHNESS_MS = 6 * 60 * 60_000;
+export const LETTERBOXD_FRESHNESS_MS = SHARED_LIST_FRESHNESS_MS;
 
 async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
   const stored = await readJsonVersion(key);

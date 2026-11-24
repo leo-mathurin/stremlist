@@ -144,12 +144,39 @@ test("an empty title has the name of the first Source list", () => {
 test("a genre filter changes the signature only when it adds a genre option", () => {
   const base = signature([list([FIRST])]);
   assert.equal(
-    signature([list([FIRST], { catalogSettings: { genre: "Drama" } })]),
+    signature([list([FIRST], { catalogSettings: { genres: ["Drama"] } })]),
     base,
   );
   assert.notEqual(
-    signature([list([FIRST], { catalogSettings: { genre: "Horror" } })]),
+    signature([list([FIRST], { catalogSettings: { genres: ["Horror"] } })]),
     base,
+  );
+});
+
+test("an excluded genre changes the signature when it removes a genre option", () => {
+  const base = signature([list([FIRST])]);
+  assert.notEqual(
+    signature([
+      list([FIRST], { catalogSettings: { excludedGenres: ["Drama"] } }),
+    ]),
+    base,
+  );
+  assert.equal(
+    signature([
+      list([FIRST], { catalogSettings: { excludedGenres: ["Horror"] } }),
+    ]),
+    base,
+  );
+});
+
+test("turning the Catalog name prefix off changes the signature", () => {
+  const rows = [list([FIRST])];
+  assert.notEqual(
+    getListReinstallSignature(rows, genres, {
+      newTitles: false,
+      catalogNamePrefix: false,
+    }),
+    getListReinstallSignature(rows, genres, { newTitles: false }),
   );
 });
 
@@ -194,7 +221,10 @@ test("without genres by Source list, genre options are left out", () => {
     signature([list([FIRST])], null),
   );
   assert.equal(
-    signature([list([FIRST], { catalogSettings: { genre: "Horror" } })], null),
+    signature(
+      [list([FIRST], { catalogSettings: { genres: ["Horror"] } })],
+      null,
+    ),
     signature([list([FIRST])], null),
   );
   assert.notEqual(

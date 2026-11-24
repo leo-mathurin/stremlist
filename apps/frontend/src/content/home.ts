@@ -40,7 +40,7 @@ export const STEPS = [
   ],
   [
     "Install once",
-    "Save to get your Addon URL and install it in Stremio or Nuvio. Your Lists refresh on their own, about every 30 minutes.",
+    "Save to get your Addon URL and install it in Stremio or Nuvio. Your Lists refresh on their own: your own lists about every 10 minutes, charts about every 6 hours.",
   ],
 ] as const;
 

@@ -34,6 +34,7 @@ const TABLE_DEFAULTS = new Map<string, () => Row>(
       rpdb_api_key: null,
       actions_enabled: false,
       action_providers: [],
+      catalog_name_prefix: true,
       new_titles_catalog: false,
       new_titles_settings: null,
       poster_source: "imdb",

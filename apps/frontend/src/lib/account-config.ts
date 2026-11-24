@@ -86,6 +86,8 @@ export interface AccountForm {
   lists: ListFormRow[];
   rpdbApiKey: string;
   posterSource: PosterSource;
+  /** Whether Catalog names start with "Stremlist". */
+  catalogNamePrefix: boolean;
   actionsEnabled: boolean;
   actions: ActionProviders;
   /** The built-in "New titles" catalog, shown among the Lists when on. */
@@ -100,6 +102,7 @@ export function configBody(form: AccountForm, access: AccountAccess) {
   return {
     rpdbApiKey: form.rpdbApiKey,
     posterSource: form.posterSource,
+    catalogNamePrefix: form.catalogNamePrefix,
     lists: listPayload(form.lists),
     actions:
       access === "private"

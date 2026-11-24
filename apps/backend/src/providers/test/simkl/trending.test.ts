@@ -180,7 +180,7 @@ describe("simkl trending charts", () => {
     expect(calls).toEqual([]);
   });
 
-  it("stay fresh for hours, today's for an hour, as the library", () => {
+  it("stay fresh for hours, today's for an hour, the library for 10 minutes", () => {
     expect(simklProvider.freshnessFor?.("trending/anime")).toBe(6 * 3_600_000);
     expect(simklProvider.freshnessFor?.("trending/tv/month")).toBe(
       6 * 3_600_000,
@@ -189,7 +189,7 @@ describe("simkl trending charts", () => {
     expect(simklProvider.freshnessFor?.("trending/movies/today")).toBe(
       3_600_000,
     );
-    expect(simklProvider.freshnessFor?.("me/ratings")).toBe(3_600_000);
+    expect(simklProvider.freshnessFor?.("me/ratings")).toBe(10 * 60_000);
   });
 });
 

@@ -293,9 +293,9 @@ describe("Trakt resolution and freshness", () => {
     expect(freshness("trending")).toBe(6 * 60 * 60_000);
     expect(freshness("users/sean/watchlist")).toBe(6 * 60 * 60_000);
     expect(freshness("lists/42")).toBe(6 * 60 * 60_000);
-    expect(freshness("me/watchlist")).toBe(30 * 60_000);
-    expect(freshness("me/up-next")).toBe(30 * 60_000);
+    expect(freshness("me/watchlist")).toBe(10 * 60_000);
+    expect(freshness("me/up-next")).toBe(10 * 60_000);
     expect(freshness("users/sean/ratings")).toBe(6 * 60 * 60_000);
-    expect(freshness("me/favorites")).toBe(30 * 60_000);
+    expect(freshness("me/favorites")).toBe(10 * 60_000);
   });
 });

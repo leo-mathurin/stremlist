@@ -42,9 +42,13 @@ BEGIN
   ASSERT NOT (SELECT new_titles_catalog FROM public.accounts WHERE id = result.account_id);
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = result.account_id) = 'imdb',
     'A new Account starts on IMDb posters';
+  ASSERT (SELECT catalog_name_prefix FROM public.accounts WHERE id = result.account_id),
+    'A new Account starts with the Stremlist prefix';
   SELECT * INTO result FROM public.create_account_with_config(NULL, '[]', NULL, 'tmdb');
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = result.account_id) = 'tmdb';
-  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 3;
+  SELECT * INTO result FROM public.create_account_with_config(NULL, '[]', NULL, NULL, NULL, false);
+  ASSERT NOT (SELECT catalog_name_prefix FROM public.accounts WHERE id = result.account_id);
+  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 4;
 
   -- A configuration that cannot be saved leaves no Account behind.
   BEGIN
@@ -55,7 +59,7 @@ BEGIN
     RAISE EXCEPTION 'Expected unique violation';
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
-  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 3,
+  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 4,
     'A failed configuration must not leave an orphan Account';
   BEGIN
     PERFORM public.create_account_with_config(NULL, '{}', NULL);
@@ -63,11 +67,11 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM <> 'Lists must be an array' THEN RAISE; END IF;
   END;
-  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 3;
+  ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 4;
 
-  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
 END;
 $$;
 

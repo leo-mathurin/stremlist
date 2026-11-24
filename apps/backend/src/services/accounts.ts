@@ -41,6 +41,8 @@ export interface Account {
   /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
   newTitlesCatalog: boolean;
   newTitlesSettings?: NewTitlesSettings;
+  /** Whether its Catalog names start with "Stremlist". */
+  catalogNamePrefix: boolean;
   lastFetchedAt: string;
 }
 
@@ -99,6 +101,7 @@ function mapAccount(row: AccountRow) {
     newTitlesSettings: newTitlesSettingsSchema.safeParse(
       row.new_titles_settings,
     ).data,
+    catalogNamePrefix: row.catalog_name_prefix,
     lastFetchedAt: row.last_fetched_at,
   };
   return account;
@@ -252,7 +255,10 @@ function toStoredNewTitles(settings: NewTitlesSettings | undefined) {
 export async function createAccountWithConfig(
   lists: ListInput[],
   rpdbApiKey: string | null,
-  settings: Pick<AccountConfigInput, "newTitles" | "posterSource"> = {},
+  settings: Pick<
+    AccountConfigInput,
+    "newTitles" | "posterSource" | "catalogNamePrefix"
+  > = {},
 ) {
   const { data, error } = await supabase.rpc("create_account_with_config", {
     p_rpdb_api_key: rpdbApiKey,
@@ -260,6 +266,7 @@ export async function createAccountWithConfig(
     p_new_titles_catalog: settings.newTitles?.enabled ?? null,
     p_new_titles_settings: toStoredNewTitles(settings.newTitles?.settings),
     p_poster_source: settings.posterSource ?? null,
+    p_catalog_name_prefix: settings.catalogNamePrefix ?? null,
   });
   if (error) {
     console.error("Failed to create an account:", error.message);
@@ -280,10 +287,10 @@ export async function replaceAccountConfig(
   rpdbApiKey: string | null,
   settings: Pick<
     AccountConfigInput,
-    "actions" | "newTitles" | "posterSource"
+    "actions" | "newTitles" | "posterSource" | "catalogNamePrefix"
   > = {},
 ) {
-  const { actions, newTitles, posterSource } = settings;
+  const { actions, newTitles, posterSource, catalogNamePrefix } = settings;
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -293,6 +300,7 @@ export async function replaceAccountConfig(
     p_new_titles_catalog: newTitles?.enabled ?? null,
     p_new_titles_settings: toStoredNewTitles(newTitles?.settings),
     p_poster_source: posterSource ?? null,
+    p_catalog_name_prefix: catalogNamePrefix ?? null,
   });
   if (error) {
     if (error.message === "Merged Source lists changed") {

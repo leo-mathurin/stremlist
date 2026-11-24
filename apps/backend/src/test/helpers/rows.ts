@@ -5,6 +5,7 @@ import { jsonObject } from "./json";
 export const accountRow = z.object({
   action_providers: z.array(z.string()),
   actions_enabled: z.boolean(),
+  catalog_name_prefix: z.boolean(),
   created_at: z.string(),
   id: z.string(),
   is_active: z.boolean(),

@@ -6,6 +6,7 @@ import {
   connectProviderOf,
   missingConnections,
   previewConnectionKey,
+  keptCatalogSettings,
 } from "../connections.ts";
 
 const trakt: ConnectionSummary = {
@@ -85,4 +86,16 @@ describe("previewConnectionKey", () => {
     assert.notEqual(refused, connected);
     assert.notEqual(again, connected);
   });
+});
+
+test("filters kept before several genres read their genre as a Show genres choice", () => {
+  const legacy = { genre: "Drama", decade: 1990 };
+  assert.deepEqual(keptCatalogSettings(legacy), {
+    decade: 1990,
+    genres: ["Drama"],
+  });
+  const both = { genre: "Drama", genres: ["Comedy"] };
+  assert.deepEqual(keptCatalogSettings(both), { genres: ["Comedy"] });
+  const current = { genres: ["Drama"] };
+  assert.equal(keptCatalogSettings(current), current);
 });

@@ -485,6 +485,26 @@ test("save errors preserve changes and allow a successful retry", async ({
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
 });
 
+test("turning off the Stremlist name prefix saves it and asks for a reinstall", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const submissions = await captureConfig(browser);
+  await app.open(`/configure?account=${accountId}`);
+  const prefix = screen.getByRole(
+    "checkbox",
+    "Start catalog names with Stremlist",
+  );
+  await expect(prefix).toBeChecked();
+  await prefix.tap();
+  await expect(prefix).not.toBeChecked();
+  await expect(screen.getByText(/Stremio shows "Watchlist"/)).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions.at(-1)?.catalogNamePrefix).toBe(false);
+});
+
 test("successful refresh applies cooldown and blocks another refresh", async ({
   app,
   screen,
@@ -588,12 +608,12 @@ test(
     await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act(
-      "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",
+      "For the Test catalog, show only the Drama genre and enable the Top rated extra catalog, then save these settings.",
       { maxModelCalls: 12 },
     );
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
-      genre: "Drama",
+      genres: ["Drama"],
       presets: ["rated"],
     });
     await agent.act(

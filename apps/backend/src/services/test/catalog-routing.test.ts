@@ -1,4 +1,8 @@
-import type { ConfigList } from "@stremlist/shared/stremio.types";
+import { DEFAULT_NEW_TITLES_SETTINGS } from "@stremlist/shared/manifest-catalogs";
+import type {
+  ConfigList,
+  NewTitlesSettings,
+} from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vite-plus/test";
 import { buildCatalogId, parseCatalogId } from "../catalog-id";
 import { buildManifestCatalogs } from "../stremio-catalogs";
@@ -196,6 +200,35 @@ describe("manifest catalog generation", () => {
       "Stremlist IMDb Watchlist",
       "Stremlist IMDb Watchlist",
     ]);
+  });
+
+  it("leaves the Stremlist prefix out when the Account turns it off", () => {
+    const names = (lists: ConfigList[], settings?: NewTitlesSettings) =>
+      buildManifestCatalogs(lists, {
+        newTitles: settings !== undefined,
+        newTitlesSettings: settings,
+        catalogNamePrefix: false,
+      }).map((catalog) => catalog.name);
+    expect(names([list({ catalogTitle: "" })])).toEqual([
+      "IMDb Watchlist",
+      "IMDb Watchlist",
+    ]);
+    expect(
+      names([list({ catalogTitle: " Picks " }), second({ catalogTitle: "" })]),
+    ).toEqual(["Picks", "Picks", "IMDb Watchlist", "IMDb Watchlist"]);
+    expect(
+      names([list({ displayMode: "movie" })], {
+        ...DEFAULT_NEW_TITLES_SETTINGS,
+        displayMode: "movie",
+      }),
+    ).toEqual(["New titles", "Leo Picks"]);
+    expect(
+      names([list({ displayMode: "movie" })], {
+        ...DEFAULT_NEW_TITLES_SETTINGS,
+        catalogTitle: "Fresh",
+        displayMode: "movie",
+      }),
+    ).toEqual(["Fresh", "Leo Picks"]);
   });
 
   it.each([

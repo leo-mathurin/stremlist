@@ -9,6 +9,7 @@ import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
 import { readPages } from "./paging";
+import { SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import type { PagedRead, ProviderAdapter, SourceEntry } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -470,7 +471,7 @@ export const senscritiqueWikidataStrategy = wikidataStrategy(
  */
 export const senscritiqueProvider: ProviderAdapter = {
   id: "senscritique",
-  freshnessMs: 6 * 60 * 60_000,
+  freshnessMs: SHARED_LIST_FRESHNESS_MS,
 
   async validateSource(ref) {
     const user = userRef(ref);

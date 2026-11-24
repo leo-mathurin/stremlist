@@ -182,6 +182,7 @@ const connections = new Hono()
             {
               newTitles: setup?.newTitles,
               posterSource: setup && savedPosterSource(setup),
+              catalogNamePrefix: setup?.catalogNamePrefix,
             },
           );
           accountId = created.accountId;

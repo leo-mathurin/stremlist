@@ -13,6 +13,7 @@ export type Database = {
         Row: {
           action_providers: string[];
           actions_enabled: boolean;
+          catalog_name_prefix: boolean;
           created_at: string;
           id: string;
           is_active: boolean;
@@ -31,6 +32,7 @@ export type Database = {
         Insert: {
           action_providers?: string[];
           actions_enabled?: boolean;
+          catalog_name_prefix?: boolean;
           created_at?: string;
           id?: string;
           is_active?: boolean;
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           action_providers?: string[];
           actions_enabled?: boolean;
+          catalog_name_prefix?: boolean;
           created_at?: string;
           id?: string;
           is_active?: boolean;
@@ -1117,6 +1120,7 @@ export type Database = {
       };
       create_account_with_config: {
         Args: {
+          p_catalog_name_prefix?: boolean;
           p_lists: Json;
           p_new_titles_catalog?: boolean;
           p_new_titles_settings?: Json;
@@ -1334,6 +1338,7 @@ export type Database = {
           p_account_id: string;
           p_action_providers: string[];
           p_actions_enabled: boolean;
+          p_catalog_name_prefix?: boolean;
           p_lists: Json;
           p_new_titles_catalog?: boolean;
           p_new_titles_settings?: Json;

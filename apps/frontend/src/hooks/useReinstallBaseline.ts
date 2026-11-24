@@ -57,6 +57,8 @@ export interface InstallSetup {
   newTitles: NewTitlesForm;
   /** Actions add a `stream` resource to the manifest. */
   actionsLive: boolean;
+  /** Catalog names start with "Stremlist". */
+  catalogNamePrefix: boolean;
 }
 
 function baselineOf(setup: InstallSetup, genres: KnownSourceGenres | null) {
@@ -64,6 +66,7 @@ function baselineOf(setup: InstallSetup, genres: KnownSourceGenres | null) {
     signature: getListReinstallSignature(setup.rows, genres, {
       newTitles: setup.newTitles.enabled,
       newTitlesSettings: setup.newTitles.settings,
+      catalogNamePrefix: setup.catalogNamePrefix,
     }),
     actionsLive: setup.actionsLive,
   };

@@ -4,6 +4,7 @@ import {
   DEFAULT_POSTER_SOURCE,
   isPosterSource,
 } from "@stremlist/shared/poster";
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { z } from "zod";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -88,10 +89,14 @@ export function dropDraft() {
   } catch {}
 }
 
-type KeptForm = Omit<AccountForm, "newTitles" | "posterSource"> & {
+type KeptForm = Omit<
+  AccountForm,
+  "newTitles" | "posterSource" | "catalogNamePrefix"
+> & {
   newTitles?: unknown;
   newTitlesEnabled?: unknown;
   posterSource?: unknown;
+  catalogNamePrefix?: unknown;
 };
 
 function isKeptForm(form: unknown): form is KeptForm {
@@ -101,6 +106,15 @@ function isKeptForm(form: unknown): form is KeptForm {
     "lists" in form &&
     Array.isArray(form.lists)
   );
+}
+
+/** Filters kept before Lists had several genres read `genre` as `genres`. */
+export function keptCatalogSettings(settings: CatalogSettings) {
+  if (!("genre" in settings)) return settings;
+  const { genre, ...rest } = settings;
+  return typeof genre === "string" && !rest.genres
+    ? { ...rest, genres: [genre] }
+    : rest;
 }
 
 /** The kept edits of this Account or new setup, without taking them. */
@@ -121,14 +135,29 @@ export function readDraft(accountId: string | null) {
     )
       return null;
     const form = draft.form;
+    const newTitles = keptNewTitles(form);
+    const newTitlesFilters = newTitles.settings.catalogSettings;
     return {
       ...form,
-      newTitles: keptNewTitles(form),
+      lists: form.lists.map((list) => ({
+        ...list,
+        catalogSettings: keptCatalogSettings(list.catalogSettings),
+      })),
+      newTitles: newTitlesFilters
+        ? {
+            ...newTitles,
+            settings: {
+              ...newTitles.settings,
+              catalogSettings: keptCatalogSettings(newTitlesFilters),
+            },
+          }
+        : newTitles,
       posterSource: isPosterSource(form.posterSource)
         ? form.posterSource
         : form.rpdbApiKey.trim()
           ? "rpdb"
           : DEFAULT_POSTER_SOURCE,
+      catalogNamePrefix: form.catalogNamePrefix !== false,
     } satisfies AccountForm;
   } catch {
     return null;

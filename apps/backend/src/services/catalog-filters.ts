@@ -61,7 +61,7 @@ export function resolveCatalogSelection(
   preset?: CatalogPreset,
 ) {
   const selected = OPTIONS.get(filter ?? "") ?? {
-    filters: { genre: filter ?? undefined },
+    filters: { genres: filter ? [filter] : undefined },
   };
   const defaults: {
     sort?: ReturnType<typeof parseSortOption>;
@@ -98,7 +98,14 @@ export function filterCatalog<T extends StremioMeta & DigitalRelease>(
   return metas.filter(
     (meta) =>
       filters.every((settings) => {
-        if (settings.genre && !meta.genres.includes(settings.genre))
+        if (
+          settings.genres?.length &&
+          !settings.genres.some((genre) => meta.genres.includes(genre))
+        )
+          return false;
+        if (
+          settings.excludedGenres?.some((genre) => meta.genres.includes(genre))
+        )
           return false;
         if (settings.decade !== undefined) {
           const year = Number.parseInt(meta.releaseInfo ?? "", 10);
