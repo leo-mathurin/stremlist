@@ -49,7 +49,8 @@ async function choose(page: Page, label: string, option: string) {
 
 async function chooseGenre(page: Page, label: string, genre: string) {
   await page.getByRole("button", { name: label, exact: true }).click();
-  await page
+  const menu = page.getByRole("menu", { name: label, exact: true });
+  await menu
     .getByRole("menuitemcheckbox", { name: genre, exact: true })
     .click();
   await page.keyboard.press("Escape");
@@ -259,9 +260,8 @@ test(
     const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
     await openFilters(page, accountId);
-    for (const [label, option] of FILTER_OPTIONS.slice(0, 2)) {
-      await choose(page, label, option);
-    }
+    await chooseGenre(page, "Show genres", "Drama");
+    await choose(page, "Decade", "1990s");
     for (const name of presets) {
       await page.getByRole("checkbox", { name, exact: true }).check();
     }
