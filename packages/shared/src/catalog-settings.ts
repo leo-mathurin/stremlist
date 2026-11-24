@@ -11,8 +11,11 @@ export interface CatalogSettings {
   decade?: number;
   maxRuntime?: number;
   minRating?: number;
-  /** Hide Titles whose release date is in the future. */
-  hideUnreleased?: true;
+  /**
+   * Hide Titles whose release date is in the future. With "digital", also
+   * hide recent movies until they come out to stream or buy in any country.
+   */
+  hideUnreleased?: true | "digital";
   presets?: CatalogPreset[];
 }
 

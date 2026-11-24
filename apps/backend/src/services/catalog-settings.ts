@@ -6,7 +6,7 @@ export const catalogSettingsSchema = z.object({
   decade: z.number().int().min(1880).max(2100).multipleOf(10).optional(),
   maxRuntime: z.number().int().min(1).max(600).optional(),
   minRating: z.number().min(0).max(10).optional(),
-  hideUnreleased: z.literal(true).optional(),
+  hideUnreleased: z.union([z.literal(true), z.literal("digital")]).optional(),
   presets: z
     .array(z.enum(["short", "rated", "shuffle"]))
     .max(3)

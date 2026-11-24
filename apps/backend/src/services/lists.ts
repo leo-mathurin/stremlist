@@ -21,6 +21,7 @@ import {
   SourceBusyError,
   SourceUnavailableError,
 } from "../providers/types";
+import { isRecentMovie, withDigitalReleases } from "../titles/digital-release";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { AccountAccess } from "./accounts";
@@ -48,6 +49,7 @@ import {
   mergeListCatalogs,
   mergeSourceCatalogs,
   sourceCaches,
+  toFilterableMeta,
   toStremioMeta,
   withLinkBack,
 } from "./merged-lists";
@@ -214,6 +216,22 @@ function toSourceMeta(
   return linked;
 }
 
+async function previousMetas(config: SourceId & { cacheKey?: string }) {
+  const previous = new Map<string, SourceMeta>();
+  const cached = config.cacheKey
+    ? await getCachedList(config.cacheKey, config)
+    : null;
+  for (const meta of cached?.data.metas ?? []) previous.set(meta.id, meta);
+  return previous;
+}
+
+function addDigitalReleases(
+  metas: SourceMeta[],
+  previous: ReadonlyMap<string, SourceMeta>,
+) {
+  return withDigitalReleases(metas, (id) => previous.get(id));
+}
+
 export interface BuiltCatalog {
   data: SourceCatalogData;
   /** Unresolved entries that no strategy tried yet. */
@@ -244,11 +262,14 @@ export async function buildCatalog(
 ) {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
+    const metas = snapshot.entries.flatMap((entry) =>
+      entry.meta ? [toSourceMeta(entry.meta, entry, config.provider)] : [],
+    );
     return {
       data: {
-        metas: snapshot.entries.flatMap((entry) =>
-          entry.meta ? [toSourceMeta(entry.meta, entry, config.provider)] : [],
-        ),
+        metas: metas.some((meta) => isRecentMovie(meta))
+          ? await addDigitalReleases(metas, await previousMetas(config))
+          : metas,
       },
       deferred: 0,
       unresolvedEntries: [],
@@ -268,14 +289,7 @@ export async function buildCatalog(
     { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
   );
 
-  const previous = new Map<string, SourceMeta>();
-  const cached = config.cacheKey
-    ? await getCachedList(config.cacheKey, config)
-    : null;
-  if (cached) {
-    for (const meta of cached.data.metas) previous.set(meta.id, meta);
-  }
-
+  const previous = await previousMetas(config);
   const enriched = await enrichTitles(
     resolved
       .filter(({ entry }) => !entry.meta)
@@ -304,7 +318,7 @@ export async function buildCatalog(
     );
   }
   return {
-    data: { metas },
+    data: { metas: await addDigitalReleases(metas, previous) },
     deferred,
     unresolvedEntries,
     withoutMetadata: unknown,
@@ -521,7 +535,7 @@ function present(
   generation: string,
 ) {
   return {
-    metas: sortCatalog(data.metas, sort, generation).map(toStremioMeta),
+    metas: sortCatalog(data.metas, sort, generation).map(toFilterableMeta),
   };
 }
 

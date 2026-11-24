@@ -32,6 +32,13 @@ export function imdbTitle(meta: StremioMeta) {
     titleText: { text: meta.name },
     titleType: { text: meta.type === "series" ? "TV Series" : "Movie" },
     releaseYear: meta.releaseInfo ? { year: Number(meta.releaseInfo) } : null,
+    releaseDate: meta.released
+      ? {
+          year: new Date(meta.released).getUTCFullYear(),
+          month: new Date(meta.released).getUTCMonth() + 1,
+          day: new Date(meta.released).getUTCDate(),
+        }
+      : null,
     ratingsSummary: meta.imdbRating
       ? { aggregateRating: Number(meta.imdbRating) }
       : null,
