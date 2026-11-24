@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-11-10T14:16:04.292Z",
+  "createdAt": "2026-11-24T19:28:11.830Z",
   "payload": {
     "actions": [
       {
@@ -21,17 +21,17 @@
       },
       {
         "name": "tap",
-        "summary": "tap combobox \"Genre\"",
+        "summary": "tap button \"Show genres\"",
         "target": {
-          "role": "combobox",
-          "name": "Genre"
+          "role": "button",
+          "name": "Show genres"
         }
       },
       {
         "name": "tap",
-        "summary": "tap option \"Drama\"",
+        "summary": "tap menuitemcheckbox \"Drama\"",
         "target": {
-          "role": "option",
+          "role": "menuitemcheckbox",
           "name": "Drama"
         }
       },
@@ -60,12 +60,12 @@
     "recordedFor": {
       "testId": "toolkit/ui.e2e.ts::catalog%20filters%20and%20extra%20presets%20survive%20save%20and%20clear",
       "targetId": "chromium",
-      "instructionDigest": "415aff2998bf596472d2ec58327d530c9afcb148bb7d6cfb953dd1d28023ccef",
+      "instructionDigest": "8b62ea0de58ad896d8355be1a9cc3b6d6c3d268d0f95934d6a9eb6994ba41324",
       "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Verified the saved state: Test catalog has Genre set to Drama and Top rated checked. The screen shows “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "Selected Drama as the only shown genre, enabled the Top rated extra catalog, and saved. The app confirmed “Saved! Choose how Stremio gets your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -101,9 +101,6 @@
         "name": "Settings for Test catalog"
       },
       {
-        "text": "No new titles detected yet."
-      },
-      {
         "role": "heading",
         "name": "Install or reinstall in Stremio"
       },
@@ -111,6 +108,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 44102
+    "endWaitMs": 12332
   }
 }

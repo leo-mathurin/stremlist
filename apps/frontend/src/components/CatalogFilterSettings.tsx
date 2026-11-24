@@ -19,6 +19,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
+import GenreFilterMenu from "@/components/GenreFilterMenu";
 import {
   Select,
   SelectContent,
@@ -30,7 +31,10 @@ import {
 const ANY = "__any__";
 
 type Filter = {
-  key: Exclude<CatalogFilterKey, "hideUnreleased">;
+  key: Exclude<
+    CatalogFilterKey,
+    "hideUnreleased" | "genres" | "excludedGenres"
+  >;
   label: string;
   empty: string;
   choices: readonly (string | number)[];
@@ -102,19 +106,15 @@ export default function CatalogFilterSettings({
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
-  const filters: readonly Filter[] = [
-    {
-      key: "genre",
-      label: "Genre",
-      empty: "All genres",
-      choices: genres,
-      suffix: "",
-    },
-    ...NUMERIC_FILTERS,
-  ];
   const activeFilters = countCatalogFilters(value);
   const activeCount = activeFilters + (value.presets?.length ?? 0);
-  const genreLocked = genres.length === 0 && value.genre === undefined;
+  const included = value.genres ?? [];
+  const excluded = value.excludedGenres ?? [];
+  const genreLocked =
+    genres.length === 0 && included.length === 0 && excluded.length === 0;
+  const withoutGenres = (next: string[], other: string[]) =>
+    other.filter((genre) => !next.includes(genre));
+  const orNothing = (list: string[]) => (list.length > 0 ? list : undefined);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
@@ -173,7 +173,44 @@ export default function CatalogFilterSettings({
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {filters.map((filter) => {
+              <GenreFilterMenu
+                id={`${panelId}-genres`}
+                label="Show genres"
+                empty="All genres"
+                hint="Shows titles that have at least one of these genres."
+                genres={genres}
+                selected={included}
+                disabled={genreLocked}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    genres: orNothing(next),
+                    excludedGenres: orNothing(withoutGenres(next, excluded)),
+                  })
+                }
+              />
+              <GenreFilterMenu
+                id={`${panelId}-excluded-genres`}
+                label="Hide genres"
+                empty="No genres hidden"
+                hint="Hides titles that have any of these genres."
+                genres={genres}
+                selected={excluded}
+                disabled={genreLocked}
+                onChange={(next) =>
+                  onChange({
+                    ...value,
+                    excludedGenres: orNothing(next),
+                    genres: orNothing(withoutGenres(next, included)),
+                  })
+                }
+              />
+              {genres.length === 0 && (
+                <p className="-mt-2 text-2xs leading-snug text-muted-foreground sm:col-span-2">
+                  Genre choices appear after saving and refreshing this list.
+                </p>
+              )}
+              {NUMERIC_FILTERS.map((filter) => {
                 const current = value[filter.key];
                 const options = new Set<string | number>(filter.choices);
                 if (current !== undefined) options.add(current);
@@ -189,16 +226,10 @@ export default function CatalogFilterSettings({
                     </Label>
                     <Select
                       value={current === undefined ? ANY : String(current)}
-                      disabled={filter.key === "genre" && genreLocked}
                       onValueChange={(next) =>
                         onChange({
                           ...value,
-                          [filter.key]:
-                            next === ANY
-                              ? undefined
-                              : filter.key === "genre"
-                                ? next
-                                : Number(next),
+                          [filter.key]: next === ANY ? undefined : Number(next),
                         })
                       }
                     >
@@ -215,12 +246,6 @@ export default function CatalogFilterSettings({
                         ))}
                       </SelectContent>
                     </Select>
-                    {filter.key === "genre" && genres.length === 0 && (
-                      <p className="mt-1 text-2xs leading-snug text-muted-foreground">
-                        Genre choices appear after saving and refreshing this
-                        list.
-                      </p>
-                    )}
                   </div>
                 );
               })}

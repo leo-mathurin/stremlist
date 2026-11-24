@@ -279,13 +279,13 @@ test(
         {
           ...row,
           availableGenres: [],
-          catalogSettings: { genre: "Western", presets: ["rated"] },
+          catalogSettings: { genres: ["Western"], presets: ["rated"] },
         },
       ],
     });
     await app.open(`/configure?account=${accountId}`);
     await openFilters(screen, browser);
-    const genre = screen.getByRole("combobox", "Genre", { exact: true });
+    const genre = screen.getByRole("button", "Show genres", { exact: true });
     await expect(genre).toHaveText("Western");
     await expect(genre).toBeEnabled();
     await agent.act(

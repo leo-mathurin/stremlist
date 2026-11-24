@@ -189,7 +189,8 @@ describe("List CRUD via the config API", () => {
 
     it("passes combined filters, custom values and presets through unchanged", async () => {
       const catalogSettings: CatalogSettings = {
-        genre: "Comedy",
+        genres: ["Comedy", "Drama"],
+        excludedGenres: ["Horror"],
         decade: 2090,
         maxRuntime: 95,
         minRating: 7.2,

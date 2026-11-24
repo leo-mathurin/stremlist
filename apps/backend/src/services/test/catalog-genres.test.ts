@@ -63,11 +63,11 @@ describe("genres from cached IMDb titles", () => {
       {
         ...list,
         id: "uncached",
-        catalogSettings: { genre: "Western", presets: ["short"] },
+        catalogSettings: { genres: ["Western"], presets: ["short"] },
       },
     ]);
     expect(rows[1].availableGenres).toEqual([]);
-    expect(rows[1].catalogSettings?.genre).toBe("Western");
+    expect(rows[1].catalogSettings?.genres).toEqual(["Western"]);
     for (const catalog of buildManifestCatalogs([rows[1]])) {
       const options = catalog.extra?.find(
         (extra) => extra.name === "genre",
@@ -77,10 +77,40 @@ describe("genres from cached IMDb titles", () => {
     }
   });
 
+  it("leaves excluded genres out of the Stremio genre options", async () => {
+    cache.seed(list.id, [movie, series]);
+    const rows = await withAvailableGenres([
+      { ...list, catalogSettings: { excludedGenres: ["Comedy"] } },
+    ]);
+    for (const catalog of buildManifestCatalogs(rows)) {
+      const options = catalog.extra?.find(
+        (extra) => extra.name === "genre",
+      )?.options;
+      expect(options).toEqual(expect.arrayContaining(["Drama", "New Genre"]));
+      expect(options).not.toContain("Comedy");
+    }
+  });
+
+  it("reads a saved single genre as one included genre", () => {
+    expect(
+      catalogSettingsSchema.parse({ genre: "Drama", decade: 1990 }),
+    ).toEqual({ genres: ["Drama"], decade: 1990 });
+    expect(catalogSettingsSchema.parse({ genres: [] })).toEqual({});
+    expect(
+      catalogSettingsSchema.parse({ genres: ["Drama", "Drama", "Comedy"] }),
+    ).toEqual({ genres: ["Drama", "Comedy"] });
+  });
+
   it.each(["", "   ", "a".repeat(101)])(
     "rejects invalid genre strings",
     (genre) => {
       expect(catalogSettingsSchema.safeParse({ genre }).success).toBe(false);
+      expect(catalogSettingsSchema.safeParse({ genres: [genre] }).success).toBe(
+        false,
+      );
+      expect(
+        catalogSettingsSchema.safeParse({ excludedGenres: [genre] }).success,
+      ).toBe(false);
     },
   );
 });

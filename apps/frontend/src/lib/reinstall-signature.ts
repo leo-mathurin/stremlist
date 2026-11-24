@@ -81,7 +81,11 @@ export function getListReinstallSignature(
         displayMode: row.displayMode,
         catalogSettings: known
           ? row.catalogSettings
-          : { ...row.catalogSettings, genre: undefined },
+          : {
+              ...row.catalogSettings,
+              genres: undefined,
+              excludedGenres: undefined,
+            },
         availableGenres: known ? listGenres(row, known) : [],
       })),
       options,

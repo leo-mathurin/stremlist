@@ -28,9 +28,13 @@ import {
 } from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
-const FILTERS = { genre: "Drama", decade: 1990, maxRuntime: 90, minRating: 7 };
+const FILTERS = {
+  genres: ["Drama"],
+  decade: 1990,
+  maxRuntime: 90,
+  minRating: 7,
+};
 const FILTER_OPTIONS = [
-  ["Genre", "Drama"],
   ["Decade", "1990s"],
   ["Maximum runtime", "90 min or less"],
   ["Minimum IMDb rating", "7 and above"],
@@ -41,6 +45,14 @@ const CARDS = 'a[href^="#/detail/"][data-index][title]';
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+async function chooseGenre(page: Page, label: string, genre: string) {
+  await page.getByRole("button", { name: label, exact: true }).click();
+  await page
+    .getByRole("menuitemcheckbox", { name: genre, exact: true })
+    .click();
+  await page.keyboard.press("Escape");
 }
 
 async function openFilters(page: Page, accountId: string) {
@@ -78,6 +90,7 @@ test(
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     await openFilters(page, accountId);
+    await chooseGenre(page, "Show genres", "Drama");
     for (const [label, option] of FILTER_OPTIONS) {
       await choose(page, label, option);
     }
@@ -96,6 +109,9 @@ test(
     ).toEqual(MATCHES);
 
     await openFilters(page, accountId);
+    await expect(
+      page.getByRole("button", { name: "Show genres", exact: true }),
+    ).toHaveText("Drama");
     for (const [name, option] of FILTER_OPTIONS) {
       await expect(
         page.getByRole("combobox", { name, exact: true }),

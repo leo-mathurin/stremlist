@@ -93,12 +93,15 @@ function manifestCatalogEntries(lists: ManifestList[]) {
   const v1 = isV1Setup(lists);
   return lists.flatMap((list) => {
     const name = v1 ? "Stremlist" : `Stremlist ${listTitle(list)}`;
+    const excluded = new Set(list.catalogSettings?.excludedGenres);
     const genres = [
       ...new Set([
         ...(list.availableGenres ?? []),
-        ...(list.catalogSettings?.genre ? [list.catalogSettings.genre] : []),
+        ...(list.catalogSettings?.genres ?? []),
       ]),
-    ].sort();
+    ]
+      .filter((genre) => !excluded.has(genre))
+      .sort();
     return listCatalogs(list).map(({ type, preset }) => {
       const label = CATALOG_PRESETS.find((entry) => entry.id === preset)?.label;
       return {

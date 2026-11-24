@@ -145,7 +145,7 @@ test(
         catalogTitle: "Release QA",
         displayMode: "movie",
         catalogSettings: {
-          genre: "Drama",
+          genres: ["Drama"],
           presets: ["rated", "short", "shuffle"],
         },
       }),
@@ -164,7 +164,7 @@ test(
     }
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
-      genre: "Drama",
+      genres: ["Drama"],
       presets: [],
     });
     expect(await manifestCatalogIds(accountId)).toEqual([catalogId]);
@@ -178,7 +178,7 @@ test(
     await page.reload();
     await openFilters(page);
     await expect(
-      page.getByRole("combobox", { name: "Genre", exact: true }),
+      page.getByRole("button", { name: "Show genres", exact: true }),
     ).toHaveText("Drama");
     for (const name of presetLabels)
       await expect(
@@ -343,7 +343,13 @@ test(
     const { accountId, catalogId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");
     await openFilters(page);
-    await choose(page, "Genre", "Comedy");
+    await page
+      .getByRole("button", { name: "Show genres", exact: true })
+      .click();
+    await page
+      .getByRole("menuitemcheckbox", { name: "Comedy", exact: true })
+      .click();
+    await page.keyboard.press("Escape");
     await choose(page, "Decade", "2020s");
     await saveConfigure(page);
     expect((await getCatalog(accountId, "movie", catalogId)).metas).toEqual([]);
@@ -355,7 +361,7 @@ test(
     await page.reload();
     await openFilters(page);
     await expect(
-      page.getByRole("combobox", { name: "Genre", exact: true }),
+      page.getByRole("button", { name: "Show genres", exact: true }),
     ).toHaveText("Comedy");
     await expect(
       page.getByRole("combobox", { name: "Decade", exact: true }),

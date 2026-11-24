@@ -42,7 +42,7 @@ for (const editFilter of [false, true]) {
 
     await app.open(`/configure?account=${accountId}`);
     await openFilters(screen, browser);
-    const genre = screen.getByLabel("Genre", { exact: true });
+    const genre = screen.getByRole("button", "Show genres", { exact: true });
     await expect(genre).toBeDisabled();
     await chooseRpdb(screen);
     await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
@@ -52,7 +52,10 @@ for (const editFilter of [false, true]) {
     await expect(genre).toBeEnabled();
     if (editFilter) {
       await genre.tap();
-      await screen.getByRole("option", "Drama", { exact: true }).tap();
+      await screen
+        .getByRole("menuitemcheckbox", "Drama", { exact: true })
+        .tap();
+      await browser.keyboard.press("Escape");
       await expect(genre).toHaveText("Drama");
     }
     release();
@@ -68,6 +71,8 @@ for (const editFilter of [false, true]) {
     await saveButton(screen).tap();
     await expect(screen.getByText(SAVED)).toBeVisible();
     expect(submissions).toHaveLength(2);
-    expect(submissions[1].lists[0].catalogSettings).toEqual({ genre: "Drama" });
+    expect(submissions[1].lists[0].catalogSettings).toEqual({
+      genres: ["Drama"],
+    });
   });
 }
