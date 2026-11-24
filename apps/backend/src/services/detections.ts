@@ -13,6 +13,7 @@ import type {
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
 import type { ProviderAdapter, SourceEntry } from "../providers/types";
+import type { DigitalRelease } from "../titles/digital-release";
 import type { AccountAccess } from "./accounts";
 import { getVisibleLists, visibleLists } from "./accounts";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
@@ -20,7 +21,7 @@ import { sortCatalog } from "./catalog-sort";
 import { listConnections } from "./connections";
 import { getCachedList } from "./list-cache";
 import type { SourceMeta } from "./list-cache";
-import { sourceCaches, toStremioMeta } from "./merged-lists";
+import { sourceCaches, toFilterableMeta } from "./merged-lists";
 import type { HistoryConnection, SourceHistory } from "./title-history";
 import {
   historyApplies,
@@ -229,7 +230,10 @@ function listName({ list, source }: Detection) {
   return `your ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }
 
-function withDetectionLine(meta: StremioMeta, detection: Detection) {
+function withDetectionLine(
+  meta: StremioMeta & DigitalRelease,
+  detection: Detection,
+) {
   const line = `Detected by Stremlist on ${DATE_FORMAT.format(detection.detectedAt)} in ${listName(detection)}.`;
   return {
     ...meta,
@@ -279,7 +283,7 @@ export async function getDetectedMetas(
         .map((metas) => metas.get(detection.imdbId))
         .find((found) => !!found);
     if (!meta) return [];
-    return [withDetectionLine(toStremioMeta(meta), detection)];
+    return [withDetectionLine(toFilterableMeta(meta), detection)];
   });
 }
 

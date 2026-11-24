@@ -12,6 +12,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { LruCache } from "../lib/lru";
+import type { DigitalRelease } from "../titles/digital-release";
 import { getR2Bucket, getR2Client } from "../lib/r2";
 import { isNotFound, isPreconditionFailed, writeJson } from "../lib/r2-json";
 import {
@@ -42,17 +43,21 @@ const stremioMetaSchema = z.object({
   addedAt: z.iso.datetime().optional(),
   latestEpisodeAt: z.iso.datetime().optional(),
   enrichedAt: z.iso.datetime().optional(),
+  digitalReleased: z.iso.datetime().optional(),
+  digitalCheckedAt: z.iso.datetime().optional(),
 });
 
 /**
- * A Title as the cache keeps it: its meta, and when it joined its Source
- * list (ADR 0006). The date is never served to Stremio.
+ * A Title as the cache keeps it: its meta, when it joined its Source list
+ * (ADR 0006) and when it came out to stream. These dates are never served
+ * to Stremio.
  */
-export type SourceMeta = StremioMeta & {
-  addedAt?: string;
-  latestEpisodeAt?: string;
-  enrichedAt?: string;
-};
+export type SourceMeta = StremioMeta &
+  DigitalRelease & {
+    addedAt?: string;
+    latestEpisodeAt?: string;
+    enrichedAt?: string;
+  };
 
 /** The canonical Catalog of one Source list, as the cache keeps it. */
 export interface SourceCatalogData {

@@ -5,6 +5,8 @@ import type {
 import { CATALOG_DECADES } from "@stremlist/shared/catalog-settings";
 import { parseSortOption } from "@stremlist/shared/constants";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { awaitsDigitalRelease } from "../titles/digital-release";
+import type { DigitalRelease } from "../titles/digital-release";
 import { runtimeMinutes } from "./catalog-sort";
 import type { CatalogSort } from "./catalog-sort";
 
@@ -87,8 +89,8 @@ function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
-export function filterCatalog(
-  metas: StremioMeta[],
+export function filterCatalog<T extends StremioMeta & DigitalRelease>(
+  metas: T[],
   filters: CatalogSettings[],
   search?: string | null,
 ) {
@@ -113,6 +115,8 @@ export function filterCatalog(
         )
           return false;
         if (settings.hideUnreleased && isUnreleased(meta)) return false;
+        if (settings.hideUnreleased === "digital" && awaitsDigitalRelease(meta))
+          return false;
         return true;
       }) &&
       (query === null ||

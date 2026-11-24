@@ -18,6 +18,7 @@ import {
   selectNewTitlesCatalog,
 } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
+import { toStremioMeta } from "../services/merged-lists";
 import { withAccountPosters } from "../services/posters";
 
 const catalog = new Hono();
@@ -142,7 +143,7 @@ async function serveCatalog(c: Context) {
       );
       return c.json({
         metas: await withAccountPosters(
-          metas.slice(skip, skip + CATALOG_PAGE_SIZE),
+          metas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
           access.account,
         ),
       });
@@ -178,7 +179,7 @@ async function serveCatalog(c: Context) {
       extra.get("search"),
     );
     const metas = await withAccountPosters(
-      matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE),
+      matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
       access.account,
     );
 

@@ -202,7 +202,7 @@ export default function CatalogFilterSettings({
               <Checkbox
                 id={`${panelId}-unreleased`}
                 aria-describedby={`${panelId}-unreleased-help`}
-                checked={value.hideUnreleased === true}
+                checked={value.hideUnreleased !== undefined}
                 onCheckedChange={(next) =>
                   onChange({
                     ...value,
@@ -227,6 +227,39 @@ export default function CatalogFilterSettings({
                 </p>
               </div>
             </div>
+
+            {value.hideUnreleased !== undefined && (
+              <div className="mt-2 ml-6.5 flex items-start gap-2.5">
+                <Checkbox
+                  id={`${panelId}-digital`}
+                  aria-describedby={`${panelId}-digital-help`}
+                  checked={value.hideUnreleased === "digital"}
+                  onCheckedChange={(next) =>
+                    onChange({
+                      ...value,
+                      hideUnreleased: next === true ? "digital" : true,
+                    })
+                  }
+                  className="mt-0.5"
+                />
+                <div>
+                  <Label
+                    htmlFor={`${panelId}-digital`}
+                    variant="plain"
+                    className="cursor-pointer"
+                  >
+                    Wait for the digital release of movies
+                  </Label>
+                  <p
+                    id={`${panelId}-digital-help`}
+                    className="text-2xs leading-snug text-muted-foreground"
+                  >
+                    Hides movies released in the last year until they are out to
+                    stream, rent or buy in a country, not only in cinemas.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="mt-4">
               <p className="text-xs font-semibold text-black/60">

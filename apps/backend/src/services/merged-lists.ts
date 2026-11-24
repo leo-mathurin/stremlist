@@ -137,17 +137,32 @@ export function mergeListCatalogs(
     : catalogs[0];
 }
 
-/** The meta as Stremio gets it: the Source list's dates stay in the cache. */
-export function toStremioMeta(meta: SourceMeta) {
-  if (
-    meta.addedAt === undefined &&
-    meta.latestEpisodeAt === undefined &&
-    meta.enrichedAt === undefined
-  )
-    return meta;
+const SOURCE_DATES = ["addedAt", "latestEpisodeAt", "enrichedAt"] as const;
+const CACHE_ONLY = [
+  ...SOURCE_DATES,
+  "digitalReleased",
+  "digitalCheckedAt",
+] as const;
+
+function without<T extends SourceMeta, K extends keyof SourceMeta>(
+  meta: T,
+  keys: readonly K[],
+) {
+  if (keys.every((key) => meta[key] === undefined)) return meta;
   const copy = { ...meta };
-  delete copy.addedAt;
-  delete copy.latestEpisodeAt;
-  delete copy.enrichedAt;
+  for (const key of keys) delete copy[key];
   return copy;
+}
+
+/** The meta as Stremio gets it: the cache's dates stay in the cache. */
+export function toStremioMeta(meta: SourceMeta) {
+  return without(meta, CACHE_ONLY);
+}
+
+/**
+ * The meta as the catalog filters need it: without the Source list's dates,
+ * with its digital release. Strip it with `toStremioMeta` before serving.
+ */
+export function toFilterableMeta(meta: SourceMeta) {
+  return without(meta, SOURCE_DATES);
 }
