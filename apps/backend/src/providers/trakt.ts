@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
+import { OWN_LIST_FRESHNESS_MS, SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import { providerFetch, providerFetchJson } from "./http";
 import { traktActions } from "./trakt/actions";
 import {
@@ -76,9 +77,6 @@ const traktSettingsSchema = z.object({
     .optional(),
 });
 
-const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
-const PERSONAL_FRESHNESS_MS = 30 * 60_000;
-
 /**
  * Trakt: public watchlists and lists, official lists and charts with the
  * client ID only; with a Connection, the user's own Source lists and Actions.
@@ -86,13 +84,13 @@ const PERSONAL_FRESHNESS_MS = 30 * 60_000;
  */
 export const traktProvider: ProviderAdapter = {
   id: "trakt",
-  freshnessMs: PERSONAL_FRESHNESS_MS,
+  freshnessMs: OWN_LIST_FRESHNESS_MS,
 
   freshnessFor(ref) {
     const source = parseTraktRef(ref);
     return source && !isPersonal(source)
-      ? PUBLIC_FRESHNESS_MS
-      : PERSONAL_FRESHNESS_MS;
+      ? SHARED_LIST_FRESHNESS_MS
+      : OWN_LIST_FRESHNESS_MS;
   },
 
   validateSource: validateTraktSource,

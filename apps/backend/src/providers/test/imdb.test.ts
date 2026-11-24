@@ -194,3 +194,13 @@ describe("imdbProvider ratings", () => {
     expect(requests[0].operationName).toBe("WatchListPage");
   });
 });
+
+describe("imdbProvider freshness", () => {
+  it("refreshes watchlists, lists and ratings after 10 minutes, charts after 6 hours", () => {
+    const freshness = (ref: string) => imdbProvider.freshnessFor?.(ref);
+    expect(freshness("ur12345678")).toBe(10 * 60_000);
+    expect(freshness("ur12345678/ratings")).toBe(10 * 60_000);
+    expect(freshness("ls012345678")).toBe(10 * 60_000);
+    expect(freshness("imdb:most-popular-movies")).toBe(6 * 60 * 60_000);
+  });
+});

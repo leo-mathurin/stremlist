@@ -7,6 +7,7 @@ import {
 } from "@stremlist/shared/simkl-charts";
 import type { SimklChartType } from "@stremlist/shared/simkl-charts";
 import { z } from "zod";
+import { SHARED_LIST_FRESHNESS_MS } from "../freshness";
 import { providerFetchJson, RateLimiter, sourceErrorFromHttp } from "../http";
 import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
@@ -25,7 +26,6 @@ const KIND_OF_TYPE: Record<SimklChartType, SimklKind> = {
 };
 
 const HOURLY_FRESHNESS_MS = 60 * 60_000;
-const DAILY_FRESHNESS_MS = 6 * 60 * 60_000;
 const CDN_MAX_AGE_MS = 60 * 60_000;
 
 interface ChartFile {
@@ -44,7 +44,9 @@ const CHART_FILES = new Map<string, ChartFile>([
             path: `trending/${type}/${period}_100.json`,
             kind: KIND_OF_TYPE[type],
             freshnessMs:
-              period === "today" ? HOURLY_FRESHNESS_MS : DAILY_FRESHNESS_MS,
+              period === "today"
+                ? HOURLY_FRESHNESS_MS
+                : SHARED_LIST_FRESHNESS_MS,
           },
         ] satisfies [string, ChartFile],
     ),
@@ -54,7 +56,7 @@ const CHART_FILES = new Map<string, ChartFile>([
     {
       path: "dvd/releases_100.json",
       kind: "movies",
-      freshnessMs: DAILY_FRESHNESS_MS,
+      freshnessMs: SHARED_LIST_FRESHNESS_MS,
     },
   ],
 ]);
@@ -67,7 +69,7 @@ function chartFile(ref: string) {
   const file: ChartFile = {
     path: `trending/${genre.type}/genre/${genre.slug}_month_500.json`,
     kind: KIND_OF_TYPE[genre.type],
-    freshnessMs: DAILY_FRESHNESS_MS,
+    freshnessMs: SHARED_LIST_FRESHNESS_MS,
   };
   return file;
 }

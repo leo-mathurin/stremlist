@@ -87,7 +87,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "List cache:",
-              text: 'a cached copy of your lists (titles, IDs, metadata). It refreshes about every 30 minutes and when you use "Refresh now", and it keeps your catalogs available if a Provider is down. Each refresh makes a new copy. Old copies are deleted automatically after about 30 days.',
+              text: 'a cached copy of your lists (titles, IDs, metadata). It refreshes when you use "Refresh now", about every 10 minutes for your own lists on IMDb, Trakt, Simkl and MDBList, and about every 6 hours for charts, public lists of other users and other Providers. It keeps your catalogs available if a Provider is down. Each refresh makes a new copy. Old copies are deleted automatically after about 30 days.',
             },
             {
               label: "New titles history:",

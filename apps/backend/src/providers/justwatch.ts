@@ -6,6 +6,7 @@ import {
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { readPages } from "./paging";
+import { SHARED_LIST_FRESHNESS_MS } from "./freshness";
 import type { ProviderAdapter, SourceEntry } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -174,7 +175,7 @@ function normalizeRef(ref: string) {
  */
 export const justwatchProvider: ProviderAdapter = {
   id: "justwatch",
-  freshnessMs: 6 * 60 * 60_000,
+  freshnessMs: SHARED_LIST_FRESHNESS_MS,
 
   async validateSource(rawRef) {
     const ref = normalizeRef(rawRef);
