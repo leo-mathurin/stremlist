@@ -1,5 +1,26 @@
 [
   {
+    "version": "v2.19.0",
+    "date": "November 24, 2026",
+    "changes": [
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Your own lists now refresh about every 10 minutes, charts every 6 hours."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "Filters can now show or hide several genres for each List."
+      },
+      {
+        "type": "enhancement",
+        "label": "Feature",
+        "text": "An option can now remove \"Stremlist\" from the start of catalog names."
+      }
+    ]
+  },
+  {
     "version": "v2.18.1",
     "date": "November 24, 2026",
     "changes": [
