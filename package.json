@@ -1,6 +1,6 @@
 {
   "name": "stremlist",
-  "version": "2.18.0",
+  "version": "2.18.1",
   "private": true,
   "description": "Stremlist - Sync your IMDb watchlist with Stremio",
   "repository": {

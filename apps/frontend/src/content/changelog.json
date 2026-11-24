@@ -1,5 +1,16 @@
 [
   {
+    "version": "v2.18.1",
+    "date": "November 24, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "The release filters are now one row of tiles, like the extra catalog options."
+      }
+    ]
+  },
+  {
     "version": "v2.18.0",
     "date": "November 24, 2026",
     "changes": [
