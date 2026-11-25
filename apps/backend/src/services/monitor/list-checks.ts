@@ -1,13 +1,17 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
+import { z } from "zod";
 import type { CanaryResult } from "./canaries";
-import { runCanaries } from "./canaries";
+import { canaryResultSchema, runCanaries } from "./canaries";
 import type { ListAlarm } from "./list-alarm";
 import { readListAlarms } from "./list-alarm";
 
 const LIST_CHECK_INTERVAL_SECONDS = 600;
 const RUN_NAME = "list-checks";
+
+// WARNING: The monitor Account spends its owner's 1,000 MDBList requests a day.
+const MDBLIST_CANARY_INTERVAL_SECONDS = 60 * 60;
 
 function env(name: string) {
   const value = process.env[name]?.trim();
@@ -104,21 +108,48 @@ async function sendHeartbeat({ url, failures }: HeartbeatPing) {
   } catch {}
 }
 
+async function claimRun(name: string, intervalSeconds: number) {
+  const { data, error } = await supabase.rpc("claim_monitor_run", {
+    p_name: name,
+    p_interval_seconds: intervalSeconds,
+  });
+  if (error) {
+    console.error(`Could not claim the run ${name}:`, error.message);
+    return false;
+  }
+  return data;
+}
+
 /**
  * Whether this call starts the list checks: only one call per interval
  * does. When the claim cannot be read, no call does: the heartbeats then
  * stop, and Better Stack alerts.
  */
-export async function claimListChecks() {
-  const { data, error } = await supabase.rpc("claim_monitor_run", {
-    p_name: RUN_NAME,
-    p_interval_seconds: LIST_CHECK_INTERVAL_SECONDS,
-  });
-  if (error) {
-    console.error("Could not claim the list checks:", error.message);
-    return false;
-  }
-  return data;
+export function claimListChecks() {
+  return claimRun(RUN_NAME, LIST_CHECK_INTERVAL_SECONDS);
+}
+
+const previousCanariesSchema = z.object({
+  canaries: z.array(canaryResultSchema),
+});
+
+async function canaryPlan() {
+  const due = await claimRun(
+    `${RUN_NAME}:mdblist`,
+    MDBLIST_CANARY_INTERVAL_SECONDS,
+  );
+  const last = due
+    ? undefined
+    : previousCanariesSchema.safeParse((await lastListChecks())?.summary);
+  const previous = last?.success
+    ? last.data.canaries.filter((result) => result.provider === "mdblist")
+    : [];
+  return previous.length === 0
+    ? { read: PROVIDER_IDS, previous }
+    : {
+        read: PROVIDER_IDS.filter((provider) => provider !== "mdblist"),
+        previous,
+      };
 }
 
 // WARNING: Keep this a type alias. An interface does not fit the Json column.
@@ -138,10 +169,12 @@ export async function runListChecks(
   probes: readonly ProbeOutcome[],
   readCanaries = runCanaries,
 ) {
-  const [canaries, alarmRead] = await Promise.all([
-    readCanaries(),
+  const plan = await canaryPlan();
+  const [read, alarmRead] = await Promise.all([
+    readCanaries(plan.read),
     readListAlarms(),
   ]);
+  const canaries = [...read, ...plan.previous];
   const alarms = "alarms" in alarmRead ? alarmRead.alarms : [];
   const reports = reportsOf(probes, canaries, alarms);
   await Promise.all(heartbeatPings(reports).map(sendHeartbeat));
