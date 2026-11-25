@@ -1,3 +1,4 @@
+import { isConnectionReset } from "../../lib/connection-reset";
 import type { ReadStats } from "./reads";
 import { processReads } from "./reads";
 import type { SweepStats } from "./sweep";
@@ -23,6 +24,7 @@ export interface CronReport {
   simkl?: WriteStats;
   simklBacklogSeconds?: number;
   errors: string[];
+  resets: string[];
 }
 
 function message(error: unknown) {
@@ -57,6 +59,10 @@ async function heartbeat(report: CronReport) {
       `The oldest Simkl write waits ${Math.round(backlog / 60)} min`,
     );
   }
+  const writeResets = (writes?.resets ?? 0) + (simkl?.resets ?? 0);
+  if (problems.length === 0 && (report.resets.length > 0 || writeResets > 0))
+    return;
+  problems.push(...report.resets);
   try {
     if (problems.length === 0) await fetch(url);
     else
@@ -66,12 +72,14 @@ async function heartbeat(report: CronReport) {
 
 export async function runWatchCron() {
   const started = Date.now();
-  const report: CronReport = { ok: true, ms: 0, errors: [] };
+  const report: CronReport = { ok: true, ms: 0, errors: [], resets: [] };
   const step = async <T>(name: string, task: () => Promise<T>) => {
     try {
       return await task();
     } catch (error) {
-      report.errors.push(`${name}: ${message(error)}`);
+      (isConnectionReset(error) ? report.resets : report.errors).push(
+        `${name}: ${message(error)}`,
+      );
       console.error(`Watch tracking ${name} failed:`, message(error));
       return undefined;
     }
@@ -99,6 +107,7 @@ export async function runWatchCron() {
             sent: (writes?.sent ?? 0) + fresh.sent,
             failed: (writes?.failed ?? 0) + fresh.failed,
             gaveUp: (writes?.gaveUp ?? 0) + fresh.gaveUp,
+            resets: (writes?.resets ?? 0) + fresh.resets,
             rateLimited: (writes?.rateLimited ?? false) || fresh.rateLimited,
           };
       }
@@ -115,7 +124,7 @@ export async function runWatchCron() {
       );
     })(),
   ]);
-  report.ok = report.errors.length === 0;
+  report.ok = report.errors.length === 0 && report.resets.length === 0;
   report.ms = Date.now() - started;
   await heartbeat(report);
   return report;

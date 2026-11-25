@@ -1,11 +1,19 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { db } from "../../../test/helpers/mock-supabase";
+import { http, HttpResponse } from "msw";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { ALARM_ACTIVE_MS, listAlarms, readListAlarms } from "../list-alarm";
-import { heartbeatPings } from "../list-checks";
+import { heartbeatPings, runListChecks } from "../list-checks";
 
-useMswServer();
+const server = useMswServer();
 
 function rows(
   ref: (index: number) => string,
@@ -174,6 +182,40 @@ describe("heartbeatPings", () => {
     ]);
   });
 
+  it("sends no success ping to a URL where one Provider lost every read to a reset", () => {
+    const shared = () => "https://beat.example/apps";
+    expect(
+      heartbeatPings(
+        [
+          { provider: "trakt", checked: true, failures: [] },
+          {
+            provider: "simkl",
+            checked: false,
+            failures: [],
+            lostToResets: true,
+          },
+        ],
+        shared,
+      ),
+    ).toEqual([]);
+    expect(
+      heartbeatPings(
+        [
+          { provider: "trakt", checked: true, failures: ["trakt probe: 500"] },
+          {
+            provider: "simkl",
+            checked: false,
+            failures: [],
+            lostToResets: true,
+          },
+        ],
+        shared,
+      ),
+    ).toEqual([
+      { url: "https://beat.example/apps", failures: ["trakt probe: 500"] },
+    ]);
+  });
+
   it("sends no ping to a URL whose Providers nothing checked, unless the alarm failed one", () => {
     const urlOf = (provider: ProviderId) =>
       provider === "justwatch" ? "https://beat.example/jw" : undefined;
@@ -191,5 +233,48 @@ describe("heartbeatPings", () => {
         failures: ["justwatch:{list}: 3 of 4 Lists fail"],
       },
     ]);
+  });
+});
+
+describe("runListChecks", () => {
+  const BEAT = "https://beat.example/senscritique";
+  const reset =
+    "ECONNRESET: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
+  let beats: string[];
+
+  beforeEach(() => {
+    db.reset();
+    beats = [];
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_SENSCRITIQUE", BEAT);
+    server.use(
+      http.all("https://beat.example/*", ({ request }) => {
+        beats.push(`${request.method} ${request.url}`);
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("sends no ping for a probe that only lost its connection to a reset", async () => {
+    const probes = [
+      { provider: "senscritique" as const, ok: false as const, error: reset },
+    ];
+
+    await runListChecks(probes, () => Promise.resolve([]));
+    expect(beats).toEqual([]);
+
+    await runListChecks(probes, () =>
+      Promise.resolve([
+        {
+          type: "senscritique:lists/{id}",
+          provider: "senscritique" as const,
+          status: "ok" as const,
+          ref: "lists/1",
+          entries: 10,
+          min: 1,
+        },
+      ]),
+    );
+    expect(beats).toEqual([`GET ${BEAT}`]);
   });
 });
