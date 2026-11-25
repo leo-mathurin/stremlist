@@ -16,6 +16,7 @@ function rows(
     provider,
     source_ref: ref(index),
     failure_reason,
+    last_attempt_at: new Date(Date.UTC(2026, 10, 24, 16, index)).toISOString(),
   }));
 }
 const diary = (index: number) => `users/user${index}/diary`;
@@ -65,6 +66,28 @@ describe("listAlarms", () => {
         ]),
       ),
     ).toEqual([]);
+  });
+
+  it("counts a public Source list in several Lists once with its last refresh, a Connection read for each List", () => {
+    const films = (index: number) =>
+      index < 2 ? "users/exotic33/films" : `users/user${index}/films`;
+    expect(
+      listAlarms(rows(films, ["unavailable", "unavailable", null, null])),
+    ).toEqual([]);
+    const recovered = (index: number) =>
+      index < 3 ? "users/exotic33/films" : "users/chi17f/films";
+    expect(
+      listAlarms(rows(recovered, ["unavailable", null, null, "unavailable"])),
+    ).toEqual([]);
+    expect(
+      listAlarms(
+        rows(
+          () => "me/history",
+          ["unavailable", "unavailable", "unavailable"],
+          "trakt",
+        ),
+      ),
+    ).toMatchObject([{ type: "trakt:me/history", failing: 3, total: 3 }]);
   });
 
   it("counts each list type on its own", () => {

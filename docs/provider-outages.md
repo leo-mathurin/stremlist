@@ -107,7 +107,8 @@ The other calls only probe. A run does these steps:
    stays failed or healthy until the next read.
 2. It reads `list_sync_status`. A list type alarms when at least 3 of its
    Source lists fail as "unavailable", or at least 2 that are half or more of
-   that type. Only Source lists refreshed in the last 24 hours count. Other
+   that type. A public Source list in several Lists counts once. Only Source
+   lists refreshed in the last 24 hours count. Other
    reasons (private, not found, a lost Connection) are the user's problems
    and never alarm.
 3. It sends one ping per heartbeat URL. The ping fails when the probe, a
