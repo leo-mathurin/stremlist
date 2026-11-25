@@ -1109,11 +1109,17 @@ describe("list checks", () => {
 
     age("list-checks", 601);
     age("list-checks:mdblist", 3601);
+    beats = [];
     failBodies = new Map();
     await monitor();
     const secondReads = canaryReads();
     expect(secondReads).toBeGreaterThan(firstReads);
-    expect(failBodies.get(`${APPS_BEAT}/fail`) ?? "").not.toContain("HTTP 429");
+    expect(beats).toEqual([{ url: `${APPS_BEAT}/fail`, method: "POST" }]);
+    const freshFailures = failBodies.get(`${APPS_BEAT}/fail`);
+    expect(freshFailures).toContain(
+      "mdblist:official/trending (official/trending): 0 entries, expected at least 160",
+    );
+    expect(freshFailures).not.toContain("HTTP 429");
 
     age("list-checks", 601);
     const saved = db
