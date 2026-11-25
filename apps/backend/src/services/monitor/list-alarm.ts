@@ -1,5 +1,9 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { isProviderId, listTypeOf } from "@stremlist/shared/providers";
+import {
+  isProviderId,
+  listTypeOf,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
 
 const ALARM_MIN_FAILING = 3;
@@ -18,6 +22,7 @@ export interface StatusRow {
   provider: string;
   source_ref: string;
   failure_reason: string | null;
+  last_attempt_at: string;
 }
 
 /** A list type whose Lists fail because of Stremlist or its Provider. */
@@ -34,11 +39,24 @@ export type ListAlarm = {
  * The list types to alarm on. Only "unavailable" is a failure of Stremlist
  * or of the Provider: the other reasons (private, not found, a lost
  * Connection…) are the user's, and never alarm. One or two failing Source
- * lists are often one broken list, so the rule asks for more.
+ * lists are often one broken list, so the rule asks for more. A public
+ * Source list in several Lists counts once, with its last refresh; one read
+ * through a Connection is the Account's own, so it counts for each List.
  */
 export function listAlarms(rows: readonly StatusRow[]) {
+  const sources = new Map<string, StatusRow>();
+  for (const [index, row] of rows.entries()) {
+    const key =
+      isProviderId(row.provider) &&
+      sourceRequiresConnection(row.provider, row.source_ref)
+        ? `row:${index}`
+        : `${row.provider}:${row.source_ref}`;
+    const kept = sources.get(key);
+    if (!kept || row.last_attempt_at > kept.last_attempt_at)
+      sources.set(key, row);
+  }
   const byType = new Map<string, ListAlarm>();
-  for (const row of rows) {
+  for (const row of sources.values()) {
     if (!isProviderId(row.provider)) continue;
     const type = listTypeOf(row.provider, row.source_ref);
     const counts = byType.get(type) ?? {
@@ -65,7 +83,7 @@ async function recentStatusRows(now: number) {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from("list_sync_status")
-      .select("provider, source_ref, failure_reason")
+      .select("provider, source_ref, failure_reason, last_attempt_at")
       .gte("last_attempt_at", since)
       .order("list_id")
       .order("provider")
