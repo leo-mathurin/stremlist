@@ -2,6 +2,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../../lib/concurrency";
+import { isConnectionReset } from "../../lib/connection-reset";
 import { supabase } from "../../lib/supabase";
 import { HttpError } from "../../providers/http";
 import type { ActionTarget } from "../../providers/types";
@@ -54,11 +55,13 @@ export interface WriteStats {
   sent: number;
   failed: number;
   gaveUp: number;
+  /** Writes whose send lost its connection to a reset; they are retried. */
+  resets: number;
   rateLimited: boolean;
 }
 
 function newStats() {
-  return { sent: 0, failed: 0, gaveUp: 0, rateLimited: false };
+  return { sent: 0, failed: 0, gaveUp: 0, resets: 0, rateLimited: false };
 }
 
 function watchedAt(write: ClaimedWrite) {
@@ -238,7 +241,8 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
       return [];
     }
     const code = errorCode(error);
-    if (code !== "not_found") stats.failed += rows.length;
+    if (isConnectionReset(error)) stats.resets += rows.length;
+    else if (code !== "not_found") stats.failed += rows.length;
     if (code === "rate_limited") stats.rateLimited = true;
     console.error(
       `Watch tracking write to ${provider} failed for ${first.account_id}:`,

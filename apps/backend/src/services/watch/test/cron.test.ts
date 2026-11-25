@@ -158,4 +158,88 @@ describe("the Watch tracking cron", () => {
     ]);
     expect(heartbeats).toEqual([{ url: heartbeat, method: "GET", body: "" }]);
   });
+
+  it("sends no ping for a step that only lost its connection to a reset", async () => {
+    const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/watch";
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_WATCH", heartbeat);
+    const reset =
+      "TypeError: ECONNRESET: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
+    rpcHandlers.set("watch_simkl_backlog", () => rpcError(reset));
+    rpcHandlers.set("take_simkl_slots", () => ({ data: [], error: null }));
+
+    const report = await runWatchCron();
+
+    expect(report).toMatchObject({
+      ok: false,
+      errors: [],
+      resets: [`simkl backlog: ${reset}`],
+    });
+    expect(heartbeats).toEqual([]);
+
+    rpcHandlers.set("take_simkl_slots", () =>
+      rpcError("canceling statement due to lock timeout"),
+    );
+    await runWatchCron();
+    expect(heartbeats).toEqual([
+      {
+        url: `${heartbeat}/fail`,
+        method: "POST",
+        body: `simkl writes: canceling statement due to lock timeout\nsimkl backlog: ${reset}`,
+      },
+    ]);
+  });
+
+  it("sends no ping when Destination writes only lost their connection to a reset", async () => {
+    const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/watch";
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_WATCH", heartbeat);
+    seedConnection("sl_watcher", "simkl");
+    rpcHandlers.set("take_simkl_slots", () => ({
+      data: [{ granted: 1, first_slot_at: new Date().toISOString(), rate: 1 }],
+      error: null,
+    }));
+    rpcHandlers.set("return_simkl_slots", () => ({ data: null, error: null }));
+    rpcHandlers.set("claim_watch_writes", (args) => {
+      if (args.p_provider !== "simkl" || args.p_exclude)
+        return { data: [], error: null };
+      const rows = Array.from({ length: 6 }, (_, index) => ({
+        id: index + 1,
+        kind: "watched",
+        account_id: "sl_watcher",
+        provider: "simkl",
+        imdb_id: "tt0944947",
+        item_type: "series",
+        season: 1,
+        episode: index + 1,
+        watched_at: "2026-11-25T02:37:00.000Z",
+        attempts: 0,
+        first_failed_at: null,
+        uncertain: false,
+      }));
+      for (const row of rows)
+        db.getTable("watch_writes").push({
+          ...row,
+          lease_token: args.p_lease_token,
+        });
+      return { data: rows, error: null };
+    });
+    rpcHandlers.set("claim_simkl_write", () =>
+      rpcError(
+        "TypeError: ECONNRESET: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
+      ),
+    );
+    rpcHandlers.set("finish_watch_writes", () => ({ data: null, error: null }));
+
+    const report = await runWatchCron();
+
+    expect(report.simkl).toMatchObject({ sent: 0, failed: 0, resets: 6 });
+    expect(rpcCallsOf("finish_watch_writes")).toMatchObject([
+      {
+        p_rows: Array.from({ length: 6 }, () => ({
+          done: false,
+          error: "provider_error",
+        })),
+      },
+    ]);
+    expect(heartbeats).toEqual([]);
+  });
 });

@@ -1,5 +1,6 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
+import { isConnectionReset } from "../../lib/connection-reset";
 import { supabase } from "../../lib/supabase";
 import { z } from "zod";
 import type { CanaryResult } from "./canaries";
@@ -37,6 +38,8 @@ interface ProviderReport {
   checked: boolean;
   /** One line per failure, which names the probe or the list type. */
   failures: string[];
+  /** Whether every read of the Provider lost its connection to a reset. */
+  lostToResets?: boolean;
 }
 
 function reportsOf(
@@ -44,9 +47,20 @@ function reportsOf(
   canaries: readonly CanaryResult[],
   alarms: readonly ListAlarm[],
 ) {
+  const reset = (result: ProbeOutcome | CanaryResult) =>
+    ("ok" in result ? !result.ok : result.status === "failed") &&
+    "error" in result &&
+    isConnectionReset(result.error);
   return PROVIDER_IDS.map((provider) => {
-    const probe = probes.find((result) => result.provider === provider);
-    const mine = canaries.filter((result) => result.provider === provider);
+    const resets =
+      probes.some((result) => result.provider === provider && reset(result)) ||
+      canaries.some((result) => result.provider === provider && reset(result));
+    const probe = probes.find(
+      (result) => result.provider === provider && !reset(result),
+    );
+    const mine = canaries.filter(
+      (result) => result.provider === provider && !reset(result),
+    );
     const failures = [
       ...(probe && !probe.ok ? [`${provider} probe: ${probe.error}`] : []),
       ...mine.flatMap((result) =>
@@ -66,7 +80,12 @@ function reportsOf(
       mine.some(
         (result) => result.status === "ok" || result.status === "failed",
       );
-    return { provider, checked, failures };
+    return {
+      provider,
+      checked,
+      failures,
+      lostToResets: resets && !checked,
+    } satisfies ProviderReport;
   });
 }
 
@@ -80,23 +99,33 @@ export interface HeartbeatPing {
  * One ping per heartbeat URL, for the Providers that share it: it fails
  * when one of them failed. A URL whose Providers nothing checked and
  * nothing failed gets no ping, so Better Stack alerts when no check runs
- * any more.
+ * any more. So does a URL with no failure where one Provider lost every read
+ * to a connection reset: the others' success must not hide it.
  */
 export function heartbeatPings(
   reports: readonly ProviderReport[],
   urlOf: (provider: ProviderId) => string | undefined = heartbeatUrl,
 ) {
-  const pings = new Map<string, HeartbeatPing & { checked: boolean }>();
-  for (const { provider, checked, failures } of reports) {
+  const pings = new Map<
+    string,
+    HeartbeatPing & { checked: boolean; lost: boolean }
+  >();
+  for (const { provider, checked, failures, lostToResets } of reports) {
     const url = urlOf(provider);
     if (!url) continue;
-    const ping = pings.get(url) ?? { url, failures: [], checked: false };
+    const ping = pings.get(url) ?? {
+      url,
+      failures: [],
+      checked: false,
+      lost: false,
+    };
     ping.checked ||= checked;
+    ping.lost ||= lostToResets ?? false;
     ping.failures.push(...failures);
     pings.set(url, ping);
   }
   return [...pings.values()]
-    .filter((ping) => ping.checked || ping.failures.length > 0)
+    .filter((ping) => ping.failures.length > 0 || (ping.checked && !ping.lost))
     .map(({ url, failures }) => ({ url, failures }));
 }
 
