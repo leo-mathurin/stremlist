@@ -43,7 +43,7 @@ const SOURCE =
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
 const MEMBER_PAGE =
-  /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films)\//;
+  /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films|list\/[^/]+\/share)\//;
 const MAX_PAGES = 100;
 const PAGE_ESTIMATE_MS = 400;
 type PageRead =

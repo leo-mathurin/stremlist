@@ -992,6 +992,38 @@ describe("Letterboxd share links", () => {
     expect(letterboxd.requests.length).toBeGreaterThan(0);
   });
 
+  it("fails only the list when Cloudflare challenges a share page, even 3 times", async () => {
+    letterboxd.serve(shareUrl, page([1]));
+    const validated = await letterboxdProvider.validateSource(
+      provisional,
+      context,
+    );
+    if (!validated.ok) throw new Error("expected ok");
+
+    for (let read = 0; read < 3; read++) {
+      await vi.advanceTimersByTimeAsync(3001);
+      letterboxd.reset();
+      letterboxd.serveAll(
+        respond(403, "<title>Just a moment...</title>", {
+          "cf-mitigated": "challenge",
+        }),
+      );
+      const challenged = letterboxdProvider.fetchSource(validated.ref, {
+        ...context,
+        forceRefresh: true,
+      });
+      challenged.catch(() => {});
+      await expect(untilSettled(challenged)).rejects.toMatchObject({
+        reason: "unavailable",
+      });
+    }
+    await background.settle();
+    expect(gate()).toMatchObject({ haltedAt: null });
+    expect(
+      db.getTable("letterboxd_requests").map((row) => row.outcome),
+    ).not.toContain("blocked");
+  });
+
   it("follows a boxd.it short link to the share page", async () => {
     const shortLink = "https://boxd.it/YtpP8$2OS5xaC1fJOBBvGv";
     letterboxd.redirect(shortLink, shareUrl);
