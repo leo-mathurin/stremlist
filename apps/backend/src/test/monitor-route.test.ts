@@ -12,7 +12,7 @@ import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { z } from "zod";
 import app from "../index.js";
 import { OUTAGE_STALE_MS } from "../providers/outages";
-import { movie } from "./helpers/account.fixture.js";
+import { movie, seedConnection } from "./helpers/account.fixture.js";
 import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { resetConfigTest } from "./helpers/config-api.js";
 import {
@@ -1057,6 +1057,71 @@ describe("list checks", () => {
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: APPS_BEAT, method: "GET" },
     ]);
+  });
+
+  it("reads the MDBList canaries at most once an hour, and keeps their results between reads", async () => {
+    vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_MDBLIST", APPS_BEAT);
+    vi.stubEnv("MONITOR_ACCOUNT_ID", "sl_monitor");
+    seedConnection("sl_monitor", "mdblist", { accessToken: "mdblist-token" });
+    const isCanaryRead = (url: string) =>
+      url.startsWith("https://api.mdblist.com/") &&
+      !url.startsWith("https://api.mdblist.com/lists/top");
+    let quotaUsed = true;
+    server.use(
+      http.get("https://api.mdblist.com/*", ({ request }) => {
+        if (!quotaUsed || !isCanaryRead(request.url)) return undefined;
+        tick();
+        return HttpResponse.json({ error: "Rate limit" }, { status: 429 });
+      }),
+    );
+    const canaryReads = () => requests.filter(isCanaryRead).length;
+    const age = (name: string, seconds: number) => {
+      const row = db.getTable("monitor_runs").find((run) => run.name === name);
+      if (!row) throw new Error(`No run ${name}`);
+      row.started_at = new Date(Date.now() - seconds * 1000).toISOString();
+    };
+
+    await monitor();
+    const firstReads = canaryReads();
+    expect(firstReads).toBeGreaterThan(0);
+    expect(beats).toEqual([{ url: `${APPS_BEAT}/fail`, method: "POST" }]);
+    const quotaFailures = failBodies.get(`${APPS_BEAT}/fail`);
+    expect(quotaFailures).toContain(
+      "mdblist:official/trending (official/trending): HTTP 429 from api.mdblist.com",
+    );
+
+    quotaUsed = false;
+    for (let run = 0; run < 5; run++) {
+      age("list-checks", 601);
+      beats = [];
+      failBodies = new Map();
+      await monitor();
+      expect(canaryReads()).toBe(firstReads);
+      expect(beats).toEqual([{ url: `${APPS_BEAT}/fail`, method: "POST" }]);
+      expect(failBodies.get(`${APPS_BEAT}/fail`)).toBe(quotaFailures);
+    }
+
+    age("list-checks", 601);
+    age("list-checks:mdblist", 3500);
+    await monitor();
+    expect(canaryReads()).toBe(firstReads);
+
+    age("list-checks", 601);
+    age("list-checks:mdblist", 3601);
+    failBodies = new Map();
+    await monitor();
+    const secondReads = canaryReads();
+    expect(secondReads).toBeGreaterThan(firstReads);
+    expect(failBodies.get(`${APPS_BEAT}/fail`) ?? "").not.toContain("HTTP 429");
+
+    age("list-checks", 601);
+    const saved = db
+      .getTable("monitor_runs")
+      .find((run) => run.name === "list-checks");
+    if (saved) saved.summary = null;
+    await monitor();
+    expect(canaryReads()).toBeGreaterThan(secondReads);
   });
 
   it("fails the Provider's heartbeat for a failed canary, but shows no outage", async () => {

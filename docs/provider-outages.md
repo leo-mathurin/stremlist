@@ -100,7 +100,11 @@ The other calls only probe. A run does these steps:
    Connections of the monitor Account (`MONITOR_ACCOUNT_ID`). Types with
    variable parts that have no built-in reference are read only when
    `MONITOR_CANARY_REFS` gives one. A type that cannot be read is "not
-   covered", which is never a failure.
+   covered", which is never a failure. The MDBList canaries are read at most
+   once an hour (row `list-checks:mdblist` of `monitor_runs`), because the
+   monitor Account uses its owner's MDBList quota of 1,000 requests a day.
+   Between two reads, a run keeps the last MDBList results, so the heartbeat
+   stays failed or healthy until the next read.
 2. It reads `list_sync_status`. A list type alarms when at least 3 of its
    Source lists fail as "unavailable", or at least 2 that are half or more of
    that type. Only Source lists refreshed in the last 24 hours count. Other

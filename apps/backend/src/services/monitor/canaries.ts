@@ -6,6 +6,7 @@ import {
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import { z } from "zod";
 import {
   mayReadProvider,
   providerDegradation,
@@ -230,19 +231,38 @@ export const CANARIES = {
   "letterboxd:users/{user}/likes/films": { min: 1 },
 } satisfies Record<string, CanarySpec>;
 
+const canaryOf = { type: z.string(), provider: z.enum(PROVIDER_IDS) };
+
 /** What one canary found. `ref` is absent when no canary reads the type. */
-export type CanaryResult = { type: string; provider: ProviderId } & (
-  | { status: "ok"; ref: string; entries: number; min: number }
-  | {
-      status: "failed";
-      ref: string;
-      error: string;
-      entries?: number;
-      min: number;
-    }
-  | { status: "skipped"; ref: string; reason: string }
-  | { status: "not_covered"; reason: string }
-);
+export const canaryResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    ...canaryOf,
+    status: z.literal("ok"),
+    ref: z.string(),
+    entries: z.number(),
+    min: z.number(),
+  }),
+  z.object({
+    ...canaryOf,
+    status: z.literal("failed"),
+    ref: z.string(),
+    error: z.string(),
+    entries: z.number().optional(),
+    min: z.number(),
+  }),
+  z.object({
+    ...canaryOf,
+    status: z.literal("skipped"),
+    ref: z.string(),
+    reason: z.string(),
+  }),
+  z.object({
+    ...canaryOf,
+    status: z.literal("not_covered"),
+    reason: z.string(),
+  }),
+]);
+export type CanaryResult = z.infer<typeof canaryResultSchema>;
 
 function env(name: string) {
   const value = process.env[name]?.trim();
@@ -430,14 +450,16 @@ async function runProviderCanaries(
 }
 
 /**
- * Read one canary per list type: the Providers at the same time, the
- * canaries of one Provider one after the other, to stay far below each
- * Provider's rate limits.
+ * Read one canary per list type of `providers`: the Providers at the same
+ * time, the canaries of one Provider one after the other, to stay far below
+ * each Provider's rate limits.
  */
-export async function runCanaries() {
+export async function runCanaries(
+  providers: readonly ProviderId[] = PROVIDER_IDS,
+) {
   const planned = plannedCanaries();
   const results = await Promise.all(
-    PROVIDER_IDS.map((provider) => runProviderCanaries(provider, planned)),
+    providers.map((provider) => runProviderCanaries(provider, planned)),
   );
   return results.flat();
 }
