@@ -237,8 +237,8 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
       );
       return [];
     }
-    stats.failed += rows.length;
     const code = errorCode(error);
+    if (code !== "not_found") stats.failed += rows.length;
     if (code === "rate_limited") stats.rateLimited = true;
     console.error(
       `Watch tracking write to ${provider} failed for ${first.account_id}:`,
