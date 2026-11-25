@@ -1,5 +1,16 @@
 [
   {
+    "version": "v2.19.2",
+    "date": "November 25, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Bugfix",
+        "text": "A challenged Letterboxd share link no longer pauses Letterboxd for everyone."
+      }
+    ]
+  },
+  {
     "version": "v2.19.1",
     "date": "November 25, 2026",
     "changes": [
