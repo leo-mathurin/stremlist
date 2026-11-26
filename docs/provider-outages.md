@@ -114,7 +114,10 @@ The other calls only probe. A run does these steps:
 3. It sends one ping per heartbeat URL. The ping fails when the probe, a
    canary or the alarm of one of its Providers failed. The body has one line
    per failure, for example
-   `imdb:ls/list (ls055592025): 12 entries, expected at least 80`. Several
+   `imdb:ls/list (ls055592025): 12 entries, expected at least 80`. A canary
+   that fails for a timeout, a server error or a network failure fails the
+   ping only when its previous read failed too (the run before, or the read
+   an hour before for MDBList). Until then, its result is `pending`. Several
    Providers can use the same URL. A URL whose Providers nothing read gets
    no ping, so Better Stack alerts when the checks stop. A read that lost
    its connection to a reset (`ECONNRESET`), also behind an adapter error,

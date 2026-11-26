@@ -27,7 +27,10 @@ import { FakeMdblist } from "../../test/helpers/mdblist.test-utils";
 import { db, resetRpc, rpcHandlers } from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { resetR2 } from "../../test/helpers/r2.test-utils";
-import { FakeSensCritique } from "../../test/helpers/senscritique.test-utils";
+import {
+  FakeSensCritique,
+  SENSCRITIQUE_GRAPHQL,
+} from "../../test/helpers/senscritique.test-utils";
 import { FakeSimkl, useSimklApp } from "../../test/helpers/simkl.test-utils";
 import { FakeTrakt, useTraktApp } from "../../test/helpers/trakt.test-utils";
 import {
@@ -252,14 +255,32 @@ describe("runCanaries", () => {
 
     const results = await onFakeClock(() => runCanaries());
 
-    expect(resultOf(results, "senscritique:lists/{id}")).toMatchObject({
+    const failed = resultOf(results, "senscritique:lists/{id}");
+    expect(failed).toMatchObject({
       status: "failed",
       error: "SensCritique GraphQL error: GraphQL changed",
     });
+    expect("transient" in failed).toBe(false);
     expect(
       resultOf(results, "letterboxd:users/{user}/lists/{slug}").status,
     ).toBe("skipped");
     expect(letterboxd.requests).toEqual([]);
+  });
+
+  it("marks a canary that fails for a server error as transient", async () => {
+    server.use(
+      http.post(
+        SENSCRITIQUE_GRAPHQL,
+        () => new HttpResponse(null, { status: 502 }),
+      ),
+    );
+
+    const results = await onFakeClock(() => runCanaries());
+
+    expect(resultOf(results, "senscritique:lists/{id}")).toMatchObject({
+      status: "failed",
+      transient: true,
+    });
   });
 
   it("lists Connection types as not covered without MONITOR_ACCOUNT_ID, and never reads them", async () => {

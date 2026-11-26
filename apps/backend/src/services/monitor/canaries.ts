@@ -12,6 +12,7 @@ import {
   mayReadProvider,
   providerDegradation,
 } from "../../providers/availability";
+import { isOutageFailure } from "../../providers/outages";
 import { getProvider } from "../../providers/registry";
 import type { ConnectionAccess } from "../../providers/types";
 import { SourceBusyError } from "../../providers/types";
@@ -250,6 +251,8 @@ export const canaryResultSchema = z.discriminatedUnion("status", [
     error: z.string(),
     entries: z.number().optional(),
     min: z.number(),
+    transient: z.boolean().optional(),
+    pending: z.boolean().optional(),
   }),
   z.object({
     ...canaryOf,
@@ -412,6 +415,7 @@ async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
       status: "failed",
       min,
       error: failureMessage(error),
+      ...(isOutageFailure(error) ? { transient: true } : {}),
     } satisfies CanaryResult;
   }
 }

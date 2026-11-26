@@ -59,7 +59,10 @@ function reportsOf(
       (result) => result.provider === provider && !reset(result),
     );
     const mine = canaries.filter(
-      (result) => result.provider === provider && !reset(result),
+      (result) =>
+        result.provider === provider &&
+        !reset(result) &&
+        !(result.status === "failed" && result.pending),
     );
     const failures = [
       ...(probe && !probe.ok ? [`${provider} probe: ${probe.error}`] : []),
@@ -163,22 +166,42 @@ const previousCanariesSchema = z.object({
 });
 
 async function canaryPlan() {
-  const due = await claimRun(
-    `${RUN_NAME}:mdblist`,
-    MDBLIST_CANARY_INTERVAL_SECONDS,
+  const [due, last] = await Promise.all([
+    claimRun(`${RUN_NAME}:mdblist`, MDBLIST_CANARY_INTERVAL_SECONDS),
+    lastListChecks(),
+  ]);
+  const parsed = previousCanariesSchema.safeParse(last?.summary);
+  const before = parsed.success ? parsed.data.canaries : [];
+  const reused = due
+    ? []
+    : before.filter((result) => result.provider === "mdblist");
+  return {
+    read:
+      reused.length === 0
+        ? PROVIDER_IDS
+        : PROVIDER_IDS.filter((provider) => provider !== "mdblist"),
+    reused,
+    before,
+  };
+}
+
+function settle(
+  read: readonly CanaryResult[],
+  before: readonly CanaryResult[],
+) {
+  return read.map((result) =>
+    result.status === "failed" &&
+    result.transient &&
+    !before.some(
+      (previous) =>
+        previous.status === "failed" &&
+        !isConnectionReset(previous.error) &&
+        previous.type === result.type &&
+        previous.ref === result.ref,
+    )
+      ? { ...result, pending: true }
+      : result,
   );
-  const last = due
-    ? undefined
-    : previousCanariesSchema.safeParse((await lastListChecks())?.summary);
-  const previous = last?.success
-    ? last.data.canaries.filter((result) => result.provider === "mdblist")
-    : [];
-  return previous.length === 0
-    ? { read: PROVIDER_IDS, previous }
-    : {
-        read: PROVIDER_IDS.filter((provider) => provider !== "mdblist"),
-        previous,
-      };
 }
 
 // WARNING: Keep this a type alias. An interface does not fit the Json column.
@@ -192,7 +215,9 @@ type ListCheckSummary = {
 /**
  * Read the canaries and the alarm, then report each Provider to its
  * heartbeat with this call's probe. Canaries and the alarm never change a
- * Provider's outage state: only the probe does.
+ * Provider's outage state: only the probe does. A canary that fails for a
+ * timeout, a server error or a network failure stays `pending` and alerts
+ * only when its previous read failed too.
  */
 export async function runListChecks(
   probes: readonly ProbeOutcome[],
@@ -203,7 +228,7 @@ export async function runListChecks(
     readCanaries(plan.read),
     readListAlarms(),
   ]);
-  const canaries = [...read, ...plan.previous];
+  const canaries = [...settle(read, plan.before), ...plan.reused];
   const alarms = "alarms" in alarmRead ? alarmRead.alarms : [];
   const reports = reportsOf(probes, canaries, alarms);
   await Promise.all(heartbeatPings(reports).map(sendHeartbeat));
