@@ -14,6 +14,7 @@ import {
 } from "../../providers/status-pages";
 import { SIMKL_API } from "../../providers/simkl/api";
 import { scheduleBackgroundTask } from "../../lib/background";
+import { failureMessage } from "../../lib/connection-reset";
 import {
   claimListChecks,
   lastListChecks,
@@ -137,7 +138,7 @@ async function runProbe(provider: ProviderId, read: ProbeRead) {
     if (degraded) throw new Error(degraded);
     return { provider, ok: true, entries: await read() } satisfies ProbeResult;
   } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown error";
+    const error = failureMessage(err);
     console.error(`${provider} monitor check failed:`, error);
     const unavailable = !(await mayReadProvider(provider));
     return {
