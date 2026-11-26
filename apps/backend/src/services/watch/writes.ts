@@ -24,6 +24,8 @@ const EPISODES_PER_SEND = 100;
 const SENDS_PER_DESTINATION = 20;
 const SIMKL_SLOW_RATE = 1;
 const SIMKL_FAST_RATE = 3;
+// WARNING: From a write's third attempt, a reset counts as a failed write.
+const INCONCLUSIVE_RESETS = 2;
 /** The oldest waiting Simkl write that switches to the fast rate. */
 export const SIMKL_BACKLOG_ALERT_SECONDS = 10 * 60;
 const SIMKL_SLOW_AFTER_429_SECONDS = 3600;
@@ -195,7 +197,9 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
     if (!isProviderEnabled(provider)) {
       throw new Error(`${provider} is turned off`);
     }
-    const connection = await getConnectionAccess(first.account_id, provider);
+    const connection = await getConnectionAccess(first.account_id, provider, {
+      throwOnReadError: true,
+    });
     const held = await stillClaimed(
       writes.map((w) => w.id),
       lease,
@@ -241,8 +245,11 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
       return [];
     }
     const code = errorCode(error);
-    if (isConnectionReset(error)) stats.resets += rows.length;
-    else if (code !== "not_found") stats.failed += rows.length;
+    const reset = isConnectionReset(error);
+    for (const write of rows) {
+      if (reset && write.attempts < INCONCLUSIVE_RESETS) stats.resets += 1;
+      else if (code !== "not_found") stats.failed += 1;
+    }
     if (code === "rate_limited") stats.rateLimited = true;
     console.error(
       `Watch tracking write to ${provider} failed for ${first.account_id}:`,

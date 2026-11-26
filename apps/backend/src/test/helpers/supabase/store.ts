@@ -125,6 +125,8 @@ export class InMemoryDB {
   unavailable = false;
   /** Tables whose queries fail, like a database that has an outage. */
   unavailableTables = new Set<string>();
+  /** Tables whose queries fail with the given message, such as a reset. */
+  tableErrors = new Map<string, string>();
   /** Tables whose queries never answer, like a database that hangs. */
   stalledTables = new Set<string>();
   /** Ends each stalled query; see `releaseStalls`. */
@@ -143,6 +145,8 @@ export class InMemoryDB {
     if (table !== null && this.unavailableTables.has(table)) {
       return { message: `${table} is unavailable` };
     }
+    const message = table === null ? undefined : this.tableErrors.get(table);
+    if (message !== undefined) return { message };
     return null;
   }
 
@@ -157,6 +161,7 @@ export class InMemoryDB {
     this.letterboxdWaiters = [];
     this.unavailable = false;
     this.unavailableTables.clear();
+    this.tableErrors.clear();
     this.releaseStalls();
   }
 

@@ -57,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   resetRpc();
+  db.reset();
 });
 
 describe("the Watch tracking cron", () => {
@@ -198,36 +199,8 @@ describe("the Watch tracking cron", () => {
       error: null,
     }));
     rpcHandlers.set("return_simkl_slots", () => ({ data: null, error: null }));
-    rpcHandlers.set("claim_watch_writes", (args) => {
-      if (args.p_provider !== "simkl" || args.p_exclude)
-        return { data: [], error: null };
-      const rows = Array.from({ length: 6 }, (_, index) => ({
-        id: index + 1,
-        kind: "watched",
-        account_id: "sl_watcher",
-        provider: "simkl",
-        imdb_id: "tt0944947",
-        item_type: "series",
-        season: 1,
-        episode: index + 1,
-        watched_at: "2026-11-25T02:37:00.000Z",
-        attempts: 0,
-        first_failed_at: null,
-        uncertain: false,
-      }));
-      for (const row of rows)
-        db.getTable("watch_writes").push({
-          ...row,
-          lease_token: args.p_lease_token,
-        });
-      return { data: rows, error: null };
-    });
-    rpcHandlers.set("claim_simkl_write", () =>
-      rpcError(
-        "TypeError: ECONNRESET: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
-      ),
-    );
-    rpcHandlers.set("finish_watch_writes", () => ({ data: null, error: null }));
+    claimEpisodes("simkl", 0);
+    rpcHandlers.set("claim_simkl_write", () => rpcError(RESET));
 
     const report = await runWatchCron();
 
@@ -242,4 +215,76 @@ describe("the Watch tracking cron", () => {
     ]);
     expect(heartbeats).toEqual([]);
   });
+
+  it("sends no ping when the Connection lookup of a write lost its connection to a reset", async () => {
+    const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/watch";
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_WATCH", heartbeat);
+    vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
+    rpcHandlers.set("take_simkl_slots", () => ({ data: [], error: null }));
+    claimEpisodes("mdblist", 0);
+    db.tableErrors.set("connections", RESET);
+
+    const report = await runWatchCron();
+
+    expect(report.writes).toMatchObject({ sent: 0, failed: 0, resets: 6 });
+    expect(heartbeats).toEqual([]);
+  });
+
+  it("fails the heartbeat when a write lost its connection to a reset from its third attempt", async () => {
+    const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/watch";
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_WATCH", heartbeat);
+    seedConnection("sl_watcher", "simkl");
+    rpcHandlers.set("take_simkl_slots", () => ({
+      data: [{ granted: 1, first_slot_at: new Date().toISOString(), rate: 1 }],
+      error: null,
+    }));
+    rpcHandlers.set("return_simkl_slots", () => ({ data: null, error: null }));
+    claimEpisodes("simkl", 2);
+    rpcHandlers.set("claim_simkl_write", () => rpcError(RESET));
+
+    const report = await runWatchCron();
+
+    expect(report.simkl).toMatchObject({ sent: 0, failed: 6, resets: 0 });
+    expect(heartbeats).toEqual([
+      {
+        url: `${heartbeat}/fail`,
+        method: "POST",
+        body: "6 Destination writes failed, 0 sent",
+      },
+    ]);
+  });
 });
+
+const RESET =
+  "TypeError: ECONNRESET: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()";
+
+function claimEpisodes(provider: string, attempts: number) {
+  let claimed = false;
+  rpcHandlers.set("claim_watch_writes", (args) => {
+    const simkl = provider === "simkl";
+    if (claimed || args.p_provider !== "simkl" || args.p_exclude === simkl)
+      return { data: [], error: null };
+    claimed = true;
+    const rows = Array.from({ length: 6 }, (_, index) => ({
+      id: index + 1,
+      kind: "watched",
+      account_id: "sl_watcher",
+      provider,
+      imdb_id: "tt0944947",
+      item_type: "series",
+      season: 1,
+      episode: index + 1,
+      watched_at: "2026-11-25T02:37:00.000Z",
+      attempts,
+      first_failed_at: attempts > 0 ? new Date().toISOString() : null,
+      uncertain: false,
+    }));
+    for (const row of rows)
+      db.getTable("watch_writes").push({
+        ...row,
+        lease_token: args.p_lease_token,
+      });
+    return { data: rows, error: null };
+  });
+  rpcHandlers.set("finish_watch_writes", () => ({ data: null, error: null }));
+}

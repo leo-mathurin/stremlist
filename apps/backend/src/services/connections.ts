@@ -55,13 +55,18 @@ function decode(row: Tables<"connections">) {
   }
 }
 
-async function readConnection(accountId: string, provider: ProviderId) {
+async function readConnection(
+  accountId: string,
+  provider: ProviderId,
+  throwOnReadError = false,
+) {
   const { data, error } = await supabase
     .from("connections")
     .select("*")
     .eq("account_id", accountId)
     .eq("provider", provider)
     .maybeSingle();
+  if (error && throwOnReadError) throw error;
   if (error || !data) return null;
   return decode(data);
 }
@@ -306,12 +311,20 @@ async function refreshUnderLease(connection: StoredConnection) {
 /**
  * Access to an Account's Connection with a Provider, or null if there is
  * none. Tokens are decrypted and refreshed only when a request needs them.
+ * A failed read also gives null, unless `throwOnReadError` is set: then the
+ * caller can tell a lost connection to the database from a missing
+ * Connection.
  */
 export async function getConnectionAccess(
   accountId: string,
   provider: ProviderId,
+  options: { throwOnReadError?: boolean } = {},
 ) {
-  const stored = await readConnection(accountId, provider);
+  const stored = await readConnection(
+    accountId,
+    provider,
+    options.throwOnReadError,
+  );
   if (!stored) return null;
   let current = stored;
   return {
