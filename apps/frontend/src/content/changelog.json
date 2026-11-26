@@ -1,5 +1,16 @@
 [
   {
+    "version": "v2.19.5",
+    "date": "November 26, 2026",
+    "changes": [
+      {
+        "type": "bugfix",
+        "label": "Reliability",
+        "text": "Maintenance release with no visible change."
+      }
+    ]
+  },
+  {
     "version": "v2.19.4",
     "date": "November 26, 2026",
     "changes": [
