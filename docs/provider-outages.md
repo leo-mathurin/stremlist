@@ -116,7 +116,10 @@ The other calls only probe. A run does these steps:
    per failure, for example
    `imdb:ls/list (ls055592025): 12 entries, expected at least 80`. Several
    Providers can use the same URL. A URL whose Providers nothing read gets
-   no ping, so Better Stack alerts when the checks stop.
+   no ping, so Better Stack alerts when the checks stop. A read that lost
+   its connection to a reset (`ECONNRESET`), also behind an adapter error,
+   is neither a failure nor a success: when every read of a Provider gets
+   a reset and nothing else on its URL failed, the URL gets no ping.
 
 The answer of `/monitor` gives `listChecks.started` and `listChecks.last`:
 the last run, with each canary result (`ok`, `failed`, `skipped` or

@@ -7,6 +7,7 @@ import {
 } from "@stremlist/shared/providers";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import { z } from "zod";
+import { failureMessage } from "../../lib/connection-reset";
 import {
   mayReadProvider,
   providerDegradation,
@@ -410,7 +411,7 @@ async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
       ref,
       status: "failed",
       min,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: failureMessage(error),
     } satisfies CanaryResult;
   }
 }
