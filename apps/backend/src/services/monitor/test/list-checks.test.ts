@@ -11,7 +11,7 @@ import { db } from "../../../test/helpers/mock-supabase";
 import { http, HttpResponse } from "msw";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { ALARM_ACTIVE_MS, listAlarms, readListAlarms } from "../list-alarm";
-import { heartbeatPings, runListChecks } from "../list-checks";
+import { claimListChecks, heartbeatPings, runListChecks } from "../list-checks";
 
 const server = useMswServer();
 
@@ -276,5 +276,51 @@ describe("runListChecks", () => {
       ]),
     );
     expect(beats).toEqual([`GET ${BEAT}`]);
+  });
+
+  it("fails the heartbeat for a canary timeout only when the previous read failed too", async () => {
+    await claimListChecks();
+    const probes = [] as const;
+    const timedOut = () =>
+      Promise.resolve([
+        {
+          type: "senscritique:lists/{id}",
+          provider: "senscritique" as const,
+          status: "failed" as const,
+          ref: "lists/1",
+          min: 1,
+          error: "The operation timed out.",
+          transient: true,
+        },
+      ]);
+
+    const first = await runListChecks(probes, timedOut);
+    expect(first.canaries).toMatchObject([{ status: "failed", pending: true }]);
+    expect(beats).toEqual([`GET ${BEAT}`]);
+
+    await runListChecks(probes, timedOut);
+    expect(beats).toEqual([`GET ${BEAT}`, `POST ${BEAT}/fail`]);
+  });
+
+  it("does not count a saved connection reset as the first failed read", async () => {
+    await claimListChecks();
+    const probes = [{ provider: "senscritique" as const, ok: true as const }];
+    const failing = (error: string) => () =>
+      Promise.resolve([
+        {
+          type: "senscritique:lists/{id}",
+          provider: "senscritique" as const,
+          status: "failed" as const,
+          ref: "lists/1",
+          min: 1,
+          error,
+          transient: true,
+        },
+      ]);
+
+    await runListChecks(probes, failing(reset));
+    await runListChecks(probes, failing("The operation timed out."));
+
+    expect(beats).toEqual([`GET ${BEAT}`, `GET ${BEAT}`]);
   });
 });
