@@ -280,7 +280,7 @@ describe("runListChecks", () => {
 
   it("fails the heartbeat for a canary timeout only when the previous read failed too", async () => {
     await claimListChecks();
-    const probes = [{ provider: "senscritique" as const, ok: true as const }];
+    const probes = [] as const;
     const timedOut = () =>
       Promise.resolve([
         {

@@ -59,15 +59,12 @@ function reportsOf(
       (result) => result.provider === provider && !reset(result),
     );
     const mine = canaries.filter(
-      (result) =>
-        result.provider === provider &&
-        !reset(result) &&
-        !(result.status === "failed" && result.pending),
+      (result) => result.provider === provider && !reset(result),
     );
     const failures = [
       ...(probe && !probe.ok ? [`${provider} probe: ${probe.error}`] : []),
       ...mine.flatMap((result) =>
-        result.status === "failed"
+        result.status === "failed" && !result.pending
           ? [`${result.type} (${result.ref}): ${result.error}`]
           : [],
       ),
