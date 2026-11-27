@@ -83,12 +83,21 @@ async function lookUpAll(
     title: string | null;
     description: string | null;
   }[] = [];
-  await mapWithConcurrency(titles, CONCURRENCY, async (title) => {
+  const shared: Promise<void>[] = [];
+  const fresh: TranslatableTitle[] = [];
+  for (const title of titles) {
+    const key = memoryKey(language, title.id);
+    if (memory.has(key)) continue;
+    const active = inFlight.get(key);
+    if (active) shared.push(active);
+    else fresh.push(title);
+  }
+  await mapWithConcurrency(fresh, CONCURRENCY, async (title) => {
     const key = memoryKey(language, title.id);
     if (memory.has(key) || Date.now() < pausedUntil) return;
     const active = inFlight.get(key);
     if (active) {
-      await active;
+      shared.push(active);
       return;
     }
     const lookup = (async () => {
@@ -122,15 +131,17 @@ async function lookUpAll(
       if (inFlight.get(key) === lookup) inFlight.delete(key);
     }
   });
-  if (answered.length === 0) return;
-  const checkedAt = new Date().toISOString();
-  const { error } = await supabase.from("title_translations").upsert(
-    answered.map((row) => ({ ...row, language, checked_at: checkedAt })),
-    { onConflict: "language,imdb_id" },
-  );
-  if (error) {
-    console.error("Failed to write the translation cache:", error.message);
+  if (answered.length > 0) {
+    const checkedAt = new Date().toISOString();
+    const { error } = await supabase.from("title_translations").upsert(
+      answered.map((row) => ({ ...row, language, checked_at: checkedAt })),
+      { onConflict: "language,imdb_id" },
+    );
+    if (error) {
+      console.error("Failed to write the translation cache:", error.message);
+    }
   }
+  if (shared.length > 0) await Promise.all(shared);
 }
 
 /**
