@@ -306,6 +306,7 @@ export default function MetadataLanguageSettings({
       }
     };
     const onDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpen(false);
@@ -368,7 +369,22 @@ export default function MetadataLanguageSettings({
           The language of titles and descriptions in Stremio.
         </p>
 
-        <div ref={rootRef} className="relative">
+        <div
+          ref={rootRef}
+          className="relative"
+          onBlur={(event) => {
+            if (
+              open &&
+              rootRef.current &&
+              !(
+                event.relatedTarget instanceof Node &&
+                rootRef.current.contains(event.relatedTarget)
+              )
+            ) {
+              setOpen(false);
+            }
+          }}
+        >
           <button
             ref={triggerRef}
             id={triggerId}
@@ -446,6 +462,12 @@ export default function MetadataLanguageSettings({
                     setHighlightedIndex(0);
                   }}
                   onKeyDown={(event) => {
+                    if (
+                      event.nativeEvent.isComposing ||
+                      event.keyCode === 229
+                    ) {
+                      return;
+                    }
                     if (event.key === "ArrowDown") {
                       event.preventDefault();
                       setHighlightedIndex((previous) =>
@@ -502,8 +524,10 @@ export default function MetadataLanguageSettings({
                       id={optionId("stremio")}
                       type="button"
                       role="option"
+                      tabIndex={-1}
                       aria-label="Use Stremio's metadata"
                       aria-selected={value === "stremio"}
+                      onMouseDown={(event) => event.preventDefault()}
                       onMouseEnter={() => setHighlightedIndex(0)}
                       onClick={() => choose("stremio")}
                       className={cn(
@@ -562,7 +586,9 @@ export default function MetadataLanguageSettings({
                       id={optionId(option.code)}
                       type="button"
                       role="option"
+                      tabIndex={-1}
                       aria-selected={selected}
+                      onMouseDown={(event) => event.preventDefault()}
                       onMouseEnter={() => setHighlightedIndex(flatIndex)}
                       onClick={() => choose(option.code)}
                       className={cn(

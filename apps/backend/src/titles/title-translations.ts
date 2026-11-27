@@ -12,7 +12,7 @@ const FOUND_TTL_MS = 30 * 24 * 60 * 60_000;
 const MISSING_TTL_MS = 7 * 24 * 60 * 60_000;
 const MEMORY_TTL_MS = 6 * 60 * 60_000;
 const FAILURE_PAUSE_MS = 60_000;
-const MAX_LOOKUPS = 100;
+const LOOKUP_BATCH_SIZE = 100;
 const CONCURRENCY = 6;
 const DB_CHUNK = 200;
 
@@ -77,6 +77,7 @@ async function lookUpAll(
   language: LocalizedMetadataLanguage,
   titles: TranslatableTitle[],
 ) {
+  if (titles.length === 0 || Date.now() < pausedUntil) return;
   const answered: {
     imdb_id: string;
     title: string | null;
@@ -151,29 +152,34 @@ export async function findTranslations(
       for (const [id, entry] of stored) {
         memory.set(memoryKey(language, id), entry);
       }
-      const missing = unknown
-        .filter(
-          ({ id }) => !stored.has(id) && !memory.has(memoryKey(language, id)),
-        )
-        .slice(0, MAX_LOOKUPS);
+      const missing = unknown.filter(
+        ({ id }) => !stored.has(id) && !memory.has(memoryKey(language, id)),
+      );
       if (missing.length === 0 || Date.now() < pausedUntil) return;
       const fresh = missing.filter(
         ({ id }) => !running.has(memoryKey(language, id)),
       );
-      const lookups = lookUpAll(language, fresh);
-      for (const { id } of fresh) {
-        running.set(memoryKey(language, id), lookups);
+      const batches: Promise<void>[] = [];
+      let chain = Promise.resolve();
+      for (let start = 0; start < fresh.length; start += LOOKUP_BATCH_SIZE) {
+        const batch = fresh.slice(start, start + LOOKUP_BATCH_SIZE);
+        const step = chain.then(() => lookUpAll(language, batch));
+        chain = step;
+        batches.push(step);
+        for (const { id } of batch) {
+          running.set(memoryKey(language, id), step);
+        }
+        void step
+          .finally(() => {
+            for (const { id } of batch) {
+              const key = memoryKey(language, id);
+              if (running.get(key) === step) running.delete(key);
+            }
+          })
+          .catch(() => undefined);
       }
-      void lookups
-        .finally(() => {
-          for (const { id } of fresh) {
-            const key = memoryKey(language, id);
-            if (running.get(key) === lookups) running.delete(key);
-          }
-        })
-        .catch(() => undefined);
       await Promise.all([
-        lookups,
+        ...batches,
         ...missing.flatMap(
           ({ id }) => running.get(memoryKey(language, id)) ?? [],
         ),

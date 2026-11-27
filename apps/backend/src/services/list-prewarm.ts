@@ -93,17 +93,19 @@ async function runPrewarmBatch(
             ? (["movie", "series"] as const)
             : [list.displayMode];
         for (const type of types) {
-          const slice = metas
-            .filter((meta) => meta.type === type)
-            .slice(0, PREWARM_POSTERS_PER_CATALOG);
+          const typed = metas.filter((meta) => meta.type === type);
           if (source) {
-            await findPosters(source, slice, {
-              budgetMs: Infinity,
-              size: "stremio",
-            });
+            await findPosters(
+              source,
+              typed.slice(0, PREWARM_POSTERS_PER_CATALOG),
+              {
+                budgetMs: Infinity,
+                size: "stremio",
+              },
+            );
           }
           if (language) {
-            await findTranslations(language, slice, { budgetMs: Infinity });
+            await findTranslations(language, typed, { budgetMs: Infinity });
           }
         }
       }

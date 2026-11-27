@@ -9,6 +9,7 @@ import {
   vi,
 } from "vite-plus/test";
 import app from "../../index.js";
+import { supabase } from "../../lib/supabase.js";
 import { localizeDescription } from "../../services/metadata";
 import { resetTranslationMemory } from "../title-translations";
 import {
@@ -34,7 +35,7 @@ import { useMswServer } from "../../test/helpers/msw.test-utils.js";
 import { resetR2 } from "../../test/helpers/r2.test-utils.js";
 
 const server = useMswServer();
-useBackgroundTasks();
+const background = useBackgroundTasks();
 const imdb = new FakeImdb();
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -230,10 +231,14 @@ describe("metadata language in Stremio responses", () => {
     expect("description" in (metas[0] ?? {})).toBe(false);
     expect(tmdbCalls).toEqual([]);
 
+    const fromSpy = vi.spyOn(supabase, "from");
     const metaRes = await app.request(
       `/${accountId}/meta/movie/${DUNE.id}.json`,
     );
     expect(await readJson(metaRes, metaBody)).toEqual({ meta: null });
+    expect(fromSpy.mock.calls.map(([table]) => String(table))).not.toContain(
+      "lists",
+    );
   });
 
   it("localizes the meta route for a chosen language", async () => {
@@ -286,6 +291,37 @@ describe("metadata language in Stremio responses", () => {
     expect(cached.metas.map(({ id, name }) => ({ id, name }))).toEqual([
       { id: DUNE.id, name: "Dune - Parte due" },
     ]);
+  });
+
+  it("populates localized titles beyond the first 100 entries in bounded background batches and searches them", async () => {
+    tmdbFind();
+    const filler = Array.from({ length: 105 }, (_, index) =>
+      movie(`tt${String(1_000_000 + index)}`, {
+        name: `Filler ${index}`,
+        description: `Plot ${index}`,
+      }),
+    );
+    const accountId = seedWithList({ metadata_language: "it-IT" }, LIST_ID, [
+      ...filler,
+      DUNE,
+    ]);
+
+    await app.request(
+      `/${accountId}/catalog/movie/wl-${LIST_ID}-movie/search=Parte%20due.json`,
+    );
+    await background.settle();
+
+    resetTranslationMemory();
+    const callsAfterIndex = tmdbCalls.length;
+    const res = await app.request(
+      `/${accountId}/catalog/movie/wl-${LIST_ID}-movie/search=Parte%20due.json`,
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson(res, catalogMetasBody);
+    expect(body.metas.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: DUNE.id, name: "Dune - Parte due" },
+    ]);
+    expect(tmdbCalls).toHaveLength(callsAfterIndex);
   });
 });
 

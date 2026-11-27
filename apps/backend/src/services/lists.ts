@@ -726,6 +726,7 @@ export async function findMetaInAccountCache(
   type: string,
   id: string,
 ) {
+  if (access.account.metadataLanguage === "stremio") return null;
   try {
     const lists = await getVisibleLists(access);
     const copies = await Promise.all(
@@ -740,7 +741,6 @@ export async function findMetaInAccountCache(
       false,
     ).at(0);
     if (!found) return null;
-    if (access.account.metadataLanguage === "stremio") return null;
     const withPosters = await withAccountPosters(
       [toStremioMeta(found)],
       access.account,
