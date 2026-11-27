@@ -7,6 +7,8 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
+import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
+import { DEFAULT_METADATA_LANGUAGE } from "@stremlist/shared/metadata-language";
 import type { PosterSource } from "@stremlist/shared/poster";
 import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -81,6 +83,7 @@ const EMPTY_FORM: AccountForm = {
   lists: [],
   rpdbApiKey: "",
   posterSource: DEFAULT_POSTER_SOURCE,
+  metadataLanguage: DEFAULT_METADATA_LANGUAGE,
   catalogNamePrefix: true,
   actionsEnabled: false,
   actions: { order: [], selected: [] },
@@ -189,6 +192,9 @@ export function useAccountConfiguration(
   const [posterSource, setPosterSource] = useState<PosterSource>(
     DEFAULT_POSTER_SOURCE,
   );
+  const [metadataLanguage, setMetadataLanguage] = useState<MetadataLanguage>(
+    DEFAULT_METADATA_LANGUAGE,
+  );
   const [catalogNamePrefix, setCatalogNamePrefix] = useState(true);
   const [access, setAccess] = useState<AccountAccess>(
     accountKey ? "private" : "new",
@@ -241,6 +247,7 @@ export function useAccountConfiguration(
     lists,
     rpdbApiKey,
     posterSource,
+    metadataLanguage,
     catalogNamePrefix,
     actionsEnabled,
     actions,
@@ -261,6 +268,7 @@ export function useAccountConfiguration(
         resetRows(draft.lists, draft.newTitles);
         setRpdbApiKey(draft.rpdbApiKey);
         setPosterSource(draft.posterSource);
+        setMetadataLanguage(draft.metadataLanguage);
         setCatalogNamePrefix(draft.catalogNamePrefix);
       }
       setStatus("ready");
@@ -325,6 +333,7 @@ export function useAccountConfiguration(
           lists: rows,
           rpdbApiKey: data.rpdbApiKey ?? "",
           posterSource: data.posterSource ?? DEFAULT_POSTER_SOURCE,
+          metadataLanguage: data.metadataLanguage ?? DEFAULT_METADATA_LANGUAGE,
           catalogNamePrefix: data.catalogNamePrefix ?? true,
           actionsEnabled: data.actions.enabled,
           actions: saved,
@@ -350,6 +359,7 @@ export function useAccountConfiguration(
         setLoadedStremio(data.stremio);
         setRpdbApiKey(shown.rpdbApiKey);
         setPosterSource(shown.posterSource);
+        setMetadataLanguage(shown.metadataLanguage);
         setCatalogNamePrefix(shown.catalogNamePrefix);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
@@ -659,6 +669,8 @@ export function useAccountConfiguration(
     setRpdbApiKey,
     posterSource,
     setPosterSource,
+    metadataLanguage,
+    setMetadataLanguage,
     catalogNamePrefix,
     setCatalogNamePrefix,
     access,

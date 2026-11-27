@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { parseSortOption } from "@stremlist/shared/constants";
 import { defaultNewTitlesSettings } from "@stremlist/shared/manifest-catalogs";
+import { DEFAULT_METADATA_LANGUAGE } from "@stremlist/shared/metadata-language";
 import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import type {
   AccountConfigResponse,
@@ -87,7 +88,13 @@ const accounts = new Hono()
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
       const body = c.req.valid("json");
-      const { rpdbApiKey, lists, newTitles, catalogNamePrefix } = body;
+      const {
+        rpdbApiKey,
+        lists,
+        newTitles,
+        metadataLanguage,
+        catalogNamePrefix,
+      } = body;
       const posterSource = savedPosterSource(body);
       const fresh = lists.map((list) => ({ ...list, id: undefined }));
       const normalized = await normalizeOrReject(c, fresh, {
@@ -101,12 +108,13 @@ const accounts = new Hono()
         const { accountId, lists: saved } = await createAccountWithConfig(
           normalized,
           rpdbKey(rpdbApiKey),
-          { newTitles, posterSource, catalogNamePrefix },
+          { newTitles, posterSource, metadataLanguage, catalogNamePrefix },
         );
         scheduleBackgroundTask(() =>
           prewarmLists(accountId, saved, true, {
             posterSource: posterSource ?? DEFAULT_POSTER_SOURCE,
             rpdbApiKey: rpdbKey(rpdbApiKey),
+            metadataLanguage: metadataLanguage ?? DEFAULT_METADATA_LANGUAGE,
           }),
         );
         return c.json({
@@ -144,6 +152,7 @@ const accounts = new Hono()
         accountId: access.via === "private" ? account.id : null,
         rpdbApiKey: account.rpdbApiKey,
         posterSource: account.posterSource,
+        metadataLanguage: account.metadataLanguage,
         catalogNamePrefix: account.catalogNamePrefix,
         lists,
         ...sync,
@@ -181,7 +190,14 @@ const accounts = new Hono()
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
       const body = c.req.valid("json");
-      const { rpdbApiKey, lists, actions, newTitles, catalogNamePrefix } = body;
+      const {
+        rpdbApiKey,
+        lists,
+        actions,
+        newTitles,
+        metadataLanguage,
+        catalogNamePrefix,
+      } = body;
       const posterSource = savedPosterSource(body);
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
@@ -226,6 +242,7 @@ const accounts = new Hono()
                 : undefined,
             newTitles,
             posterSource,
+            metadataLanguage,
             catalogNamePrefix,
           },
         );
@@ -252,6 +269,7 @@ const accounts = new Hono()
         prewarmLists(access.account.id, saved, access.via === "private", {
           posterSource: posterSource ?? access.account.posterSource,
           rpdbApiKey: rpdbKey(rpdbApiKey),
+          metadataLanguage: metadataLanguage ?? access.account.metadataLanguage,
         }),
       );
 

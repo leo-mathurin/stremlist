@@ -89,10 +89,22 @@ function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
+function matchesSearch(
+  meta: StremioMeta,
+  query: string,
+  localizedNames?: ReadonlyMap<string, string>,
+) {
+  if (query.length === 0) return false;
+  if (normalizeSearch(meta.name).includes(query)) return true;
+  const localized = localizedNames?.get(meta.id);
+  return localized !== undefined && normalizeSearch(localized).includes(query);
+}
+
 export function filterCatalog<T extends StremioMeta & DigitalRelease>(
   metas: T[],
   filters: CatalogSettings[],
   search?: string | null,
+  localizedNames?: ReadonlyMap<string, string>,
 ) {
   const query = search == null ? null : normalizeSearch(search);
   return metas.filter(
@@ -126,7 +138,6 @@ export function filterCatalog<T extends StremioMeta & DigitalRelease>(
           return false;
         return true;
       }) &&
-      (query === null ||
-        (query.length > 0 && normalizeSearch(meta.name).includes(query))),
+      (query === null || matchesSearch(meta, query, localizedNames)),
   );
 }

@@ -1,5 +1,7 @@
 import type { Json } from "@stremlist/shared/database";
+import { METADATA_LANGUAGES } from "@stremlist/shared/metadata-language";
 import type {
+  StremioCatalogMeta,
   StremioManifest,
   StremioMeta,
   StremioStream,
@@ -72,7 +74,15 @@ const stremioMeta = z
   })
   .loose() satisfies z.ZodType<StremioMeta>;
 
+const stremioCatalogMeta = stremioMeta.extend({
+  description: z.string().optional(),
+}) satisfies z.ZodType<StremioCatalogMeta>;
+
 export const metasBody = z.object({ metas: z.array(stremioMeta) }).loose();
+
+export const catalogMetasBody = z
+  .object({ metas: z.array(stremioCatalogMeta) })
+  .loose();
 
 export const metaBody = z.object({ meta: stremioMeta.nullable() }).loose();
 
@@ -182,6 +192,7 @@ export const configBody = z
     accountId: z.string().nullable(),
     rpdbApiKey: z.string().nullable(),
     posterSource: z.enum(["imdb", "tmdb", "rpdb"]).optional(),
+    metadataLanguage: z.enum(METADATA_LANGUAGES).optional(),
     catalogNamePrefix: z.boolean().optional(),
     lists: z.array(configList),
     connections: z.array(

@@ -122,6 +122,7 @@ describe("configBody", () => {
     ],
     rpdbApiKey: "key",
     posterSource: "tmdb",
+    metadataLanguage: "it-IT",
     catalogNamePrefix: false,
     actionsEnabled: true,
     actions: { order: ["simkl", "trakt"], selected: ["trakt", "simkl"] },
@@ -152,6 +153,7 @@ describe("configBody", () => {
     const body = configBody(form, "private");
     assert.equal(body.rpdbApiKey, "key");
     assert.equal(body.posterSource, "tmdb");
+    assert.equal(body.metadataLanguage, "it-IT");
     assert.equal(body.catalogNamePrefix, false);
     assert.deepEqual(body.newTitles, {
       enabled: true,
@@ -183,6 +185,14 @@ describe("configBody", () => {
       );
       assert.equal(
         hasUnsavedChanges(form, { ...form, posterSource: "imdb" }, "legacy"),
+        true,
+      );
+      assert.equal(
+        hasUnsavedChanges(
+          form,
+          { ...form, metadataLanguage: "stremio" },
+          "legacy",
+        ),
         true,
       );
       assert.equal(

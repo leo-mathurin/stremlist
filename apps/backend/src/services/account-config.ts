@@ -7,6 +7,7 @@ import {
 } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
+import { METADATA_LANGUAGES } from "@stremlist/shared/metadata-language";
 import { POSTER_SOURCES } from "@stremlist/shared/poster";
 import type { PosterSource } from "@stremlist/shared/poster";
 import {
@@ -90,6 +91,8 @@ export const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
   /** Omitted by older clients: the saved source stays. */
   posterSource: z.enum(POSTER_SOURCES).optional(),
+  /** Omitted by older clients: the saved language stays. */
+  metadataLanguage: z.enum(METADATA_LANGUAGES).optional(),
   /** Omitted by older clients: the saved choice stays. */
   catalogNamePrefix: z.boolean().optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),

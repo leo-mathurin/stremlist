@@ -1,13 +1,28 @@
 import { parseSortOption } from "@stremlist/shared/constants";
 import { listSources } from "@stremlist/shared/list-merge";
+import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
+import {
+  DEFAULT_METADATA_LANGUAGE,
+  isLocalizedLanguage,
+  isMetadataLanguage,
+} from "@stremlist/shared/metadata-language";
+import {
+  DEFAULT_POSTER_SOURCE,
+  isPosterSource,
+} from "@stremlist/shared/poster";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
 import { findPosters } from "../titles/title-posters";
+import { findTranslations } from "../titles/title-translations";
 import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
 import type { PosterSettings } from "./posters";
 import { lookupSourceOf } from "./posters";
+
+type PrewarmSettings = PosterSettings & {
+  metadataLanguage?: MetadataLanguage;
+};
 
 const PREWARM_SOURCES = 10;
 const PREWARM_QUEUE_MS = 200_000;
@@ -51,13 +66,27 @@ async function runPrewarmBatch(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
-  posters: PosterSettings | null,
+  settings: PrewarmSettings | null,
 ) {
   const startedAt = performance.now();
   const queueDeadline = Date.now() + PREWARM_QUEUE_MS;
   let prewarmed = 0;
   let free = PREWARM_SOURCES;
   let waiting: (() => void)[] = [];
+  let translationQueue = Promise.resolve();
+
+  const enqueueTranslations = (
+    language: Parameters<typeof findTranslations>[0],
+    titles: Parameters<typeof findTranslations>[1],
+  ) => {
+    const queued = translationQueue.then(() =>
+      findTranslations(language, titles, { budgetMs: Infinity }).then(
+        () => undefined,
+      ),
+    );
+    translationQueue = queued.catch(() => undefined);
+    return queued;
+  };
 
   const prewarmList = async (list: ConfigList) => {
     const sources = Math.min(listSources(list).length, PREWARM_SOURCES);
@@ -65,45 +94,82 @@ async function runPrewarmBatch(
       await new Promise<void>((resolve) => waiting.push(resolve));
     }
     free -= sources;
+    let metas: Awaited<ReturnType<typeof getListCatalog>>["metas"];
     try {
-      const { metas } = await getListCatalog(list, {
+      ({ metas } = await getListCatalog(list, {
         accountId,
         sort: parseSortOption(list.sortOption),
         allowConnection,
         policy: "prewarm",
         queueDeadline,
-      });
+      }));
       prewarmed += 1;
-      const source = posters && lookupSourceOf(posters);
-      if (source) {
-        const types =
-          list.displayMode === "split"
-            ? (["movie", "series"] as const)
-            : [list.displayMode];
-        for (const type of types) {
-          await findPosters(
-            source,
-            metas
-              .filter((meta) => meta.type === type)
-              .slice(0, PREWARM_POSTERS_PER_CATALOG),
-            { budgetMs: Infinity, size: "stremio" },
-          );
-        }
-      }
     } catch (error) {
       console.error(`Failed to prewarm list ${list.id}:`, error);
+      return;
     } finally {
       free += sources;
       const woken = waiting;
       waiting = [];
       for (const wake of woken) wake();
     }
+    try {
+      const source = settings && lookupSourceOf(settings);
+      const language =
+        settings?.metadataLanguage &&
+        isLocalizedLanguage(settings.metadataLanguage)
+          ? settings.metadataLanguage
+          : null;
+      if (source || language) {
+        const types =
+          list.displayMode === "split"
+            ? (["movie", "series"] as const)
+            : [list.displayMode];
+        for (const type of types) {
+          const typed = metas.filter((meta) => meta.type === type);
+          if (source) {
+            await findPosters(
+              source,
+              typed.slice(0, PREWARM_POSTERS_PER_CATALOG),
+              {
+                budgetMs: Infinity,
+                size: "stremio",
+              },
+            );
+          }
+          if (language) {
+            await enqueueTranslations(language, typed);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to warm metadata for list ${list.id}:`, error);
+    }
   };
   await Promise.all(lists.map(prewarmList));
+  await translationQueue;
 
   console.log(
     `Prewarmed ${prewarmed}/${lists.length} lists in ${Math.round(performance.now() - startedAt)}ms`,
   );
+}
+
+async function readPrewarmSettings(accountId: string) {
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("poster_source, rpdb_api_key, metadata_language")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    posterSource: isPosterSource(data.poster_source)
+      ? data.poster_source
+      : DEFAULT_POSTER_SOURCE,
+    rpdbApiKey: data.rpdb_api_key,
+    metadataLanguage: isMetadataLanguage(data.metadata_language)
+      ? data.metadata_language
+      : DEFAULT_METADATA_LANGUAGE,
+  } satisfies PrewarmSettings;
 }
 
 /**
@@ -115,14 +181,14 @@ export async function prewarmLists(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
-  posters: PosterSettings | null = null,
+  settings: PrewarmSettings | null = null,
 ) {
   const leaseToken = randomUUID();
   let generation = await requestPrewarm(accountId, leaseToken);
   if (generation === null) return;
 
   for (;;) {
-    await runPrewarmBatch(accountId, lists, allowConnection, posters);
+    await runPrewarmBatch(accountId, lists, allowConnection, settings);
     const nextGeneration = await finishPrewarm(
       accountId,
       leaseToken,
@@ -130,6 +196,9 @@ export async function prewarmLists(
     );
     if (nextGeneration === null) return;
     generation = nextGeneration;
-    lists = await getAccountLists(accountId);
+    [lists, settings] = await Promise.all([
+      getAccountLists(accountId),
+      readPrewarmSettings(accountId),
+    ]);
   }
 }

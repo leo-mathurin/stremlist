@@ -20,6 +20,7 @@ export type Database = {
           last_cache_served_at: string | null;
           last_fetched_at: string;
           legacy_imdb_user_id: string | null;
+          metadata_language: string;
           new_titles_catalog: boolean;
           new_titles_settings: Json | null;
           poster_source: string;
@@ -39,6 +40,7 @@ export type Database = {
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
+          metadata_language?: string;
           new_titles_catalog?: boolean;
           new_titles_settings?: Json | null;
           poster_source?: string;
@@ -57,6 +59,7 @@ export type Database = {
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
+          metadata_language?: string;
           new_titles_catalog?: boolean;
           new_titles_settings?: Json | null;
           poster_source?: string;
@@ -673,6 +676,31 @@ export type Database = {
         };
         Relationships: [];
       };
+      title_translations: {
+        Row: {
+          checked_at: string;
+          description: string | null;
+          imdb_id: string;
+          language: string;
+          title: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          checked_at?: string;
+          description?: string | null;
+          imdb_id: string;
+          language: string;
+          title?: string | null;
+        };
+        Update: {
+          checked_at?: string;
+          description?: string | null;
+          imdb_id?: string;
+          language?: string;
+          title?: string | null;
+        };
+        Relationships: [];
+      };
       watch_destinations: {
         Row: {
           account_id: string;
@@ -1122,6 +1150,7 @@ export type Database = {
         Args: {
           p_catalog_name_prefix?: boolean;
           p_lists: Json;
+          p_metadata_language?: string;
           p_new_titles_catalog?: boolean;
           p_new_titles_settings?: Json;
           p_poster_source?: string;
@@ -1340,6 +1369,7 @@ export type Database = {
           p_actions_enabled: boolean;
           p_catalog_name_prefix?: boolean;
           p_lists: Json;
+          p_metadata_language?: string;
           p_new_titles_catalog?: boolean;
           p_new_titles_settings?: Json;
           p_poster_source?: string;

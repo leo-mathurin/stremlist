@@ -124,9 +124,9 @@ BEGIN
 
   ASSERT public.generate_account_id() ~ '^sl_[0-9A-Za-z]{22}$';
 
-  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean,text)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean,text)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb,boolean,text)', 'EXECUTE');
   ASSERT NOT has_function_privilege('anon', 'public.claim_connection_refresh(text,text,integer,uuid)', 'EXECUTE');
 END;
 $$;
@@ -226,6 +226,26 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'tmdb';
+
+  -- Metadata language: en-US by default, saved with the configuration, kept
+  -- when a caller omits it, and limited to supported values.
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'en-US',
+    'Existing Accounts keep en-US metadata';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, NULL, NULL, NULL, 'it-IT');
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'it-IT';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL);
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'it-IT',
+    'An omitted metadata language keeps the saved one';
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configothertest00000000') = 'en-US',
+    'A save changes the metadata language of its Account only';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, NULL, NULL, NULL, 'stremio');
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'stremio';
+  BEGIN
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, NULL, NULL, NULL, 'klingon');
+    RAISE EXCEPTION 'Expected check violation';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'stremio';
 END;
 $$;
 

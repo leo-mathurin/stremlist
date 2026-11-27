@@ -74,6 +74,10 @@ _Avoid_: Item, media, product, film (for both kinds)
 Where the posters of an Account come from: IMDb (the default), TMDB, TheTVDB, or RPDB with the Account's RPDB key. It applies to every Catalog of the Account, whatever the Provider of each List. The RPDB key stays saved when another source is chosen. When TMDB or TheTVDB has no poster for a Title, or does not answer, and when RPDB has no key, the Title shows its IMDb poster. Any source can show posters with logos of streaming services.
 _Avoid_: Artwork provider, image source
 
+**Metadata language**:
+The language of Title names and plot descriptions that Stremlist sends to Stremio: `en-US` (the default), another supported TMDB locale such as `it-IT` or `fr-FR`, or `stremio` to omit catalog plot descriptions and `/meta` responses so detail pages use an available metadata addon (such as Cinemeta or a TMDB addon). It applies to every Catalog of the Account, whatever the Provider of each List. When TMDB has no translation for a Title, or does not answer, the Title keeps its English name and description.
+_Avoid_: Translation mode, locale setting
+
 **Unresolved entry**:
 An entry of a Source list for which no IMDb ID is known yet. It is not shown, and Stremlist tries again to resolve it on later refreshes.
 _Avoid_: Missing item, dropped item

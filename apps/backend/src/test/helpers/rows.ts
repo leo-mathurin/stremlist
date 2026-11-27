@@ -12,6 +12,7 @@ export const accountRow = z.object({
   last_cache_served_at: z.string().nullable(),
   last_fetched_at: z.string(),
   legacy_imdb_user_id: z.string().nullable(),
+  metadata_language: z.string(),
   new_titles_catalog: z.boolean(),
   new_titles_settings: jsonObject.nullable(),
   poster_source: z.string(),
