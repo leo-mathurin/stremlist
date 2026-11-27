@@ -29,6 +29,7 @@ export type Database = {
           prewarm_request_generation: number;
           rpdb_api_key: string | null;
         };
+        ComputedFields: never;
         Insert: {
           action_providers?: string[];
           actions_enabled?: boolean;
@@ -86,6 +87,7 @@ export type Database = {
           scope: string | null;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           access_token: string;
           account_id: string;
@@ -151,6 +153,7 @@ export type Database = {
           window_started_at: string;
           letterboxd_gate_store: undefined | null;
         };
+        ComputedFields: "letterboxd_gate_store";
         Insert: {
           blocked_count?: number;
           blocked_since?: string | null;
@@ -207,6 +210,7 @@ export type Database = {
           requests: number;
           wait_ms_total: number;
         };
+        ComputedFields: never;
         Insert: {
           duration_buckets: number[];
           duration_ms_max: number;
@@ -254,6 +258,7 @@ export type Database = {
           url: string;
           wait_ms: number;
         };
+        ComputedFields: never;
         Insert: {
           at?: string;
           body_excerpt?: string | null;
@@ -310,6 +315,7 @@ export type Database = {
           seq: number;
           waiting: boolean;
         };
+        ComputedFields: never;
         Insert: {
           due_at: string;
           expires_at: string;
@@ -338,6 +344,7 @@ export type Database = {
           source_ref: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           list_id: string;
           provider: string;
@@ -373,6 +380,7 @@ export type Database = {
           source_ref: string;
           title_count: number | null;
         };
+        ComputedFields: never;
         Insert: {
           failing_since?: string | null;
           failure_reason?: string | null;
@@ -419,6 +427,7 @@ export type Database = {
           source_ref: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           catalog_settings?: NonNullable<Json>;
@@ -466,6 +475,7 @@ export type Database = {
           started_at: string;
           summary: Json | null;
         };
+        ComputedFields: never;
         Insert: {
           finished_at?: string | null;
           name: string;
@@ -490,6 +500,7 @@ export type Database = {
           provider: string;
           state: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id?: string | null;
           browser_key_hash: string;
@@ -526,6 +537,7 @@ export type Database = {
           outage_since: string | null;
           provider: string;
         };
+        ComputedFields: never;
         Insert: {
           checked_at?: string;
           failures?: number;
@@ -550,6 +562,7 @@ export type Database = {
           locked_until: string;
           provider: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           imdb_id: string;
@@ -584,6 +597,7 @@ export type Database = {
           update_locked_until: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           auth_key: string;
@@ -621,6 +635,7 @@ export type Database = {
           retry_after: string | null;
           strategy: string | null;
         };
+        ComputedFields: never;
         Insert: {
           external_id: string;
           imdb_id?: string | null;
@@ -646,6 +661,7 @@ export type Database = {
           poster: string | null;
           source: string;
         };
+        ComputedFields: never;
         Insert: {
           checked_at?: string;
           imdb_id: string;
@@ -668,6 +684,7 @@ export type Database = {
           language: string;
           title: string | null;
         };
+        ComputedFields: never;
         Insert: {
           checked_at?: string;
           description?: string | null;
@@ -697,6 +714,7 @@ export type Database = {
           watched_enabled: boolean;
           watchlist_enabled: boolean;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           enabled_at?: string;
@@ -744,6 +762,7 @@ export type Database = {
           imdb_id: string;
           provider: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           imdb_id: string;
@@ -784,6 +803,7 @@ export type Database = {
           start_state: NonNullable<Json>;
           video_id: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           cycle_started_at: string;
@@ -838,6 +858,7 @@ export type Database = {
           next_slot_at: string;
           slow_until: string;
         };
+        ComputedFields: never;
         Insert: {
           id: string;
           next_slot_at?: string;
@@ -855,6 +876,7 @@ export type Database = {
           id: string;
           last_slot_at: string;
         };
+        ComputedFields: never;
         Insert: {
           id: string;
           last_slot_at: string;
@@ -874,6 +896,7 @@ export type Database = {
           stremio_trakt: boolean;
           sweep_slot: number;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           baseline_at?: string | null;
@@ -920,6 +943,7 @@ export type Database = {
           uncertain: boolean;
           watched_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           attempts?: number;
@@ -972,24 +996,25 @@ export type Database = {
     Views: {
       letterboxd_recent_failures: {
         Row: {
-          at: string | null;
+          at: string;
           body_excerpt: string | null;
           cf_cache_status: string | null;
           cf_mitigated: string | null;
           cf_ray: string | null;
-          duration_ms: number | null;
+          duration_ms: number;
           error: string | null;
-          outcome: string | null;
-          page_kind: string | null;
-          priority: string | null;
-          probe: boolean | null;
+          outcome: string;
+          page_kind: string;
+          priority: string;
+          probe: boolean;
           rate: number | null;
           region: string | null;
           retry_after: string | null;
           status: number | null;
-          url: string | null;
-          wait_ms: number | null;
+          url: string;
+          wait_ms: number;
         };
+        ComputedFields: never;
         Relationships: [];
       };
       letterboxd_request_rates: {
@@ -1001,7 +1026,7 @@ export type Database = {
           failure_share: number | null;
           failures: number | null;
           max_duration_ms: number | null;
-          minute: string | null;
+          minute: string;
           p50_duration_ms_under: number | null;
           p95_duration_ms_under: number | null;
           rate_limited: number | null;
@@ -1009,6 +1034,7 @@ export type Database = {
           rate_min: number | null;
           requests: number | null;
         };
+        ComputedFields: never;
         Relationships: [];
       };
     };
@@ -1201,7 +1227,10 @@ export type Database = {
       };
       letterboxd_gate_settle: {
         Args: {
-          g: Database["public"]["Tables"]["letterboxd_gate"]["Row"];
+          g: Omit<
+            Database["public"]["Tables"]["letterboxd_gate"]["Row"],
+            Database["public"]["Tables"]["letterboxd_gate"]["ComputedFields"]
+          >;
           p_target: number;
           t: string;
         };
@@ -1238,7 +1267,12 @@ export type Database = {
         Returns: Json;
       };
       letterboxd_gate_store: {
-        Args: { g: Database["public"]["Tables"]["letterboxd_gate"]["Row"] };
+        Args: {
+          g: Omit<
+            Database["public"]["Tables"]["letterboxd_gate"]["Row"],
+            Database["public"]["Tables"]["letterboxd_gate"]["ComputedFields"]
+          >;
+        };
         Returns: undefined;
       };
       letterboxd_record: {
