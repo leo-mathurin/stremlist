@@ -1,7 +1,15 @@
 import { parseSortOption } from "@stremlist/shared/constants";
 import { listSources } from "@stremlist/shared/list-merge";
 import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
-import { isLocalizedLanguage } from "@stremlist/shared/metadata-language";
+import {
+  DEFAULT_METADATA_LANGUAGE,
+  isLocalizedLanguage,
+  isMetadataLanguage,
+} from "@stremlist/shared/metadata-language";
+import {
+  DEFAULT_POSTER_SOURCE,
+  isPosterSource,
+} from "@stremlist/shared/poster";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
@@ -146,6 +154,24 @@ async function runPrewarmBatch(
   );
 }
 
+async function readPrewarmSettings(accountId: string) {
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("poster_source, rpdb_api_key, metadata_language")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    posterSource: isPosterSource(data.poster_source)
+      ? data.poster_source
+      : DEFAULT_POSTER_SOURCE,
+    rpdbApiKey: data.rpdb_api_key,
+    metadataLanguage: isMetadataLanguage(data.metadata_language)
+      ? data.metadata_language
+      : DEFAULT_METADATA_LANGUAGE,
+  } satisfies PrewarmSettings;
+}
+
 /**
  * Warm the Catalogs of an Account after a save, so Stremio's first request
  * finds them cached. Saves that arrive during a prewarm are queued through a
@@ -170,6 +196,9 @@ export async function prewarmLists(
     );
     if (nextGeneration === null) return;
     generation = nextGeneration;
-    lists = await getAccountLists(accountId);
+    [lists, settings] = await Promise.all([
+      getAccountLists(accountId),
+      readPrewarmSettings(accountId),
+    ]);
   }
 }

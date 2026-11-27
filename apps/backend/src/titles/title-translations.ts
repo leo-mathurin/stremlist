@@ -31,7 +31,7 @@ const memory = new LruCache<string, TitleTranslation>({
   ttlMs: MEMORY_TTL_MS,
 });
 let pausedUntil = 0;
-const inFlight = new Map<string, Promise<void>>();
+const inFlight = new Map<string, Promise<TitleTranslation | null>>();
 
 const memoryKey = (language: LocalizedMetadataLanguage, id: string) =>
   `${language}:${id}`;
@@ -76,6 +76,7 @@ async function readStored(language: LocalizedMetadataLanguage, ids: string[]) {
 async function lookUpAll(
   language: LocalizedMetadataLanguage,
   titles: TranslatableTitle[],
+  resolved: Map<string, TitleTranslation>,
 ) {
   if (titles.length === 0 || Date.now() < pausedUntil) return;
   const answered: {
@@ -87,17 +88,37 @@ async function lookUpAll(
   const fresh: TranslatableTitle[] = [];
   for (const title of titles) {
     const key = memoryKey(language, title.id);
-    if (memory.has(key)) continue;
+    const cached = memory.get(key);
+    if (cached) {
+      resolved.set(title.id, cached);
+      continue;
+    }
     const active = inFlight.get(key);
-    if (active) shared.push(active);
-    else fresh.push(title);
+    if (active) {
+      shared.push(
+        active.then((entry) => {
+          if (entry) resolved.set(title.id, entry);
+        }),
+      );
+    } else {
+      fresh.push(title);
+    }
   }
   await mapWithConcurrency(fresh, CONCURRENCY, async (title) => {
     const key = memoryKey(language, title.id);
-    if (memory.has(key) || Date.now() < pausedUntil) return;
+    const cached = memory.get(key);
+    if (cached) {
+      resolved.set(title.id, cached);
+      return;
+    }
+    if (Date.now() < pausedUntil) return;
     const active = inFlight.get(key);
     if (active) {
-      shared.push(active);
+      shared.push(
+        active.then((entry) => {
+          if (entry) resolved.set(title.id, entry);
+        }),
+      );
       return;
     }
     const lookup = (async () => {
@@ -109,11 +130,13 @@ async function lookUpAll(
             hasTranslation(entry) ? FOUND_TTL_MS : MISSING_TTL_MS,
           ),
         });
+        resolved.set(title.id, entry);
         answered.push({
           imdb_id: title.id,
           title: entry.title,
           description: entry.description,
         });
+        return entry;
       } catch (error) {
         if (Date.now() >= pausedUntil) {
           console.warn(
@@ -122,6 +145,7 @@ async function lookUpAll(
           );
         }
         pausedUntil = Date.now() + FAILURE_PAUSE_MS;
+        return null;
       }
     })();
     inFlight.set(key, lookup);
@@ -165,9 +189,13 @@ export async function findTranslations(
     return new Map<string, TitleTranslation>();
   }
 
-  const unknown = [...unique.values()].filter(
-    ({ id }) => !memory.has(memoryKey(language, id)),
-  );
+  const resolved = new Map<string, TitleTranslation>();
+  const unknown: TranslatableTitle[] = [];
+  for (const title of unique.values()) {
+    const cached = memory.get(memoryKey(language, title.id));
+    if (cached) resolved.set(title.id, cached);
+    else unknown.push(title);
+  }
   if (unknown.length > 0) {
     const work = (async () => {
       const stored = await readStored(
@@ -176,16 +204,16 @@ export async function findTranslations(
       );
       for (const [id, entry] of stored) {
         memory.set(memoryKey(language, id), entry);
+        resolved.set(id, entry);
       }
-      const missing = unknown.filter(
-        ({ id }) => !stored.has(id) && !memory.has(memoryKey(language, id)),
-      );
+      const missing = unknown.filter(({ id }) => !resolved.has(id));
       if (missing.length === 0 || Date.now() < pausedUntil) return;
       for (let start = 0; start < missing.length; start += LOOKUP_BATCH_SIZE) {
         if (Date.now() < pausedUntil) break;
         await lookUpAll(
           language,
           missing.slice(start, start + LOOKUP_BATCH_SIZE),
+          resolved,
         );
       }
     })().catch((error: unknown) => {
@@ -210,9 +238,8 @@ export async function findTranslations(
   }
 
   const found = new Map<string, TitleTranslation>();
-  for (const id of unique.keys()) {
-    const entry = memory.get(memoryKey(language, id));
-    if (entry && hasTranslation(entry)) found.set(id, entry);
+  for (const [id, entry] of resolved) {
+    if (hasTranslation(entry)) found.set(id, entry);
   }
   return found;
 }

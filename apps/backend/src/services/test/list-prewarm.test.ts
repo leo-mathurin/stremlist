@@ -20,11 +20,13 @@ import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc, rpcCalls } from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import * as TitlePosters from "../../titles/title-posters";
+import * as TitleTranslations from "../../titles/title-translations";
 import * as Lists from "../lists";
 import { prewarmLists } from "../list-prewarm";
 
 const getListCatalog = vi.spyOn(Lists, "getListCatalog");
 const findPosters = vi.spyOn(TitlePosters, "findPosters");
+const findTranslations = vi.spyOn(TitleTranslations, "findTranslations");
 
 const imdb = new FakeImdb();
 const server = useMswServer();
@@ -366,6 +368,34 @@ describe("prewarmLists", () => {
       `Failed to request prewarm for ${ACCOUNT_ID}:`,
       expect.objectContaining({ message: "database unavailable" }),
     );
+  });
+
+  it("reloads updated account settings before running a queued prewarm pass", async () => {
+    const reads = holdReads();
+    const movies = titles("movie", 2);
+    imdb.watchlists.set(savedList(0).sourceRef, movies);
+
+    const first = prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
+      posterSource: "imdb",
+      rpdbApiKey: null,
+      metadataLanguage: "en-US",
+    });
+    try {
+      await reads.arrived(0);
+      db.getTable("accounts")[0].metadata_language = "it-IT";
+      await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
+        posterSource: "imdb",
+        rpdbApiKey: null,
+        metadataLanguage: "it-IT",
+      });
+      reads.finish(0);
+    } finally {
+      reads.finishAll();
+    }
+    await first;
+    expect(findTranslations).toHaveBeenCalledWith("it-IT", expect.any(Array), {
+      budgetMs: Infinity,
+    });
   });
 
   it("never reads through a Connection when a Legacy alias saved", async () => {
