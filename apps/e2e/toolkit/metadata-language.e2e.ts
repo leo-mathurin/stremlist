@@ -83,7 +83,7 @@ test("Use Stremio's metadata updates the preview and saves cleanly", async ({
   await screen.getByRole("button", "Preview").tap();
   await expect(
     screen.getByText(
-      "Filled by Stremio (Cinemeta or your TMDB addon) in your Stremio language.",
+      "Catalog previews omit the plot in this mode. Opening the title uses an available metadata addon (such as Cinemeta or TMDB).",
     ),
   ).toBeVisible();
 

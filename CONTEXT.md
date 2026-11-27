@@ -75,7 +75,7 @@ Where the posters of an Account come from: IMDb (the default), TMDB, TheTVDB, or
 _Avoid_: Artwork provider, image source
 
 **Metadata language**:
-The language of Title names and plot descriptions that Stremlist sends to Stremio: `en-US` (the default), another supported TMDB locale such as `it-IT` or `fr-FR`, or `stremio` to omit descriptions so Stremio's own metadata addon (Cinemeta or a TMDB addon) supplies them in the user's language. It applies to every Catalog of the Account, whatever the Provider of each List. When TMDB has no translation for a Title, or does not answer, the Title keeps its English name and description.
+The language of Title names and plot descriptions that Stremlist sends to Stremio: `en-US` (the default), another supported TMDB locale such as `it-IT` or `fr-FR`, or `stremio` to omit catalog plot descriptions and `/meta` responses so detail pages use an available metadata addon (such as Cinemeta or a TMDB addon). It applies to every Catalog of the Account, whatever the Provider of each List. When TMDB has no translation for a Title, or does not answer, the Title keeps its English name and description.
 _Avoid_: Translation mode, locale setting
 
 **Unresolved entry**:

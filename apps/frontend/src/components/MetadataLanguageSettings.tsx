@@ -23,7 +23,6 @@ import { cn } from "@/lib/utils";
 interface SampleTranslation {
   title: string;
   description: string;
-  genres: string[];
   fallback?: boolean;
 }
 
@@ -50,86 +49,72 @@ const SAMPLE_TITLES: readonly SampleTitle[] = [
       title: "Dune: Part Two",
       description:
         "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.",
-      genres: ["Sci-Fi", "Adventure"],
     },
     translations: {
       "en-US": {
         title: "Dune: Part Two",
         description:
           "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family.",
-        genres: ["Sci-Fi", "Adventure"],
       },
       "it-IT": {
         title: "Dune - Parte due",
         description:
           "Paul Atreides si unisce a Chani e ai Fremen in un viaggio di vendetta contro i cospiratori che hanno distrutto la sua famiglia.",
-        genres: ["Fantascienza", "Avventura"],
       },
       "fr-FR": {
         title: "Dune : Deuxième partie",
         description:
           "Paul Atréides s'unit à Chani et aux Fremen pour mener la révolte contre ceux qui ont anéanti sa famille.",
-        genres: ["Science-Fiction", "Aventure"],
       },
       "es-ES": {
         title: "Dune: Parte dos",
         description:
           "Paul Atreides se une a Chani y a los Fremen mientras busca venganza contra los conspiradores que destruyeron a su familia.",
-        genres: ["Ciencia ficción", "Aventura"],
       },
       "es-MX": {
         title: "Duna: Parte dos",
         description:
           "Paul Atreides se une a Chani y a los Fremen en una senda de venganza contra quienes destruyeron a su familia.",
-        genres: ["Ciencia ficción", "Aventura"],
       },
       "de-DE": {
         title: "Dune: Part Two",
         description:
           "Paul Atreides schließt sich Chani und den Fremen an und sinnt auf Rache an den Verschwörern, die seine Familie zerstörten.",
-        genres: ["Science-Fiction", "Abenteuer"],
       },
       "pt-BR": {
         title: "Duna: Parte Dois",
         description:
           "Paul Atreides se une a Chani e aos Fremen em uma jornada de vingança contra os conspiradores que destruíram sua família.",
-        genres: ["Ficção científica", "Aventura"],
       },
       "pt-PT": {
         title: "Dune: Parte Dois",
         description:
           "Paul Atreides junta-se a Chani e aos Fremen num caminho de vingança contra os conspiradores que destruíram a sua família.",
-        genres: ["Ficção científica", "Aventura"],
       },
       "nl-NL": {
         title: "Dune: Part Two",
         description:
           "Paul Atreides sluit zich aan bij Chani en de Fremen op een wraaktocht tegen de samenzweerders die zijn familie verwoestten.",
-        genres: ["Sciencefiction", "Avontuur"],
       },
       "pl-PL": {
         title: "Diuna: Część druga",
         description:
           "Paul Atryda łączy siły z Chani i Fremenami, szukając zemsty na spiskowcach, którzy zniszczyli jego rodzinę.",
-        genres: ["Sci-Fi", "Przygodowy"],
       },
       "ja-JP": {
         title: "デューン 砂の惑星 PART2",
         description:
           "ポール・アトレイデスはチャニとフレメンの民と手を組み、一族を滅ぼした陰謀家たちへの復讐に立ち上がる。",
-        genres: ["SF", "アドベンチャー"],
       },
       "ko-KR": {
         title: "듄: 파트 2",
         description:
           "폴 아트레이데스는 챠니와 프레멘 부족과 손을 잡고 가문을 무너뜨린 음모자들에게 복수할 여정을 시작한다.",
-        genres: ["SF", "모험"],
       },
       "tr-TR": {
         title: "Dune: Çöl Gezegeni Bölüm İki",
         description:
           "Paul Atreides, ailesini yok eden komploculardan intikam almak için Chani ve Fremenlerle güçlerini birleştirir.",
-        genres: ["Bilim Kurgu", "Macera"],
       },
     },
   },
@@ -144,68 +129,57 @@ const SAMPLE_TITLES: readonly SampleTitle[] = [
       title: "Severance",
       description:
         "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
-      genres: ["Drama", "Mystery"],
     },
     translations: {
       "en-US": {
         title: "Severance",
         description:
           "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
-        genres: ["Drama", "Mystery"],
       },
       "it-IT": {
         title: "Scissione",
         description:
           "Mark guida una squadra di impiegati i cui ricordi sono stati divisi chirurgicamente tra vita lavorativa e vita privata.",
-        genres: ["Drammatico", "Mistero"],
       },
       "fr-FR": {
         title: "Severance",
         description:
           "Mark dirige une équipe d'employés dont les souvenirs ont été chirurgicalement séparés entre vie professionnelle et vie privée.",
-        genres: ["Drame", "Mystère"],
       },
       "es-ES": {
         title: "Separación",
         description:
           "Mark dirige un equipo de oficinistas cuyos recuerdos han sido divididos quirúrgicamente entre su vida laboral y personal.",
-        genres: ["Drama", "Misterio"],
       },
       "de-DE": {
         title: "Severance",
         description:
           "Mark leitet ein Büro-Team, dessen Erinnerungen chirurgisch zwischen Arbeits- und Privatleben getrennt wurden.",
-        genres: ["Drama", "Mystery"],
       },
       "pt-BR": {
         title: "Ruptura",
         description:
           "Mark lidera uma equipe de funcionários cujas memórias foram divididas cirurgicamente entre o trabalho e a vida pessoal.",
-        genres: ["Drama", "Mistério"],
       },
       "nl-NL": {
         title: "Severance",
         description:
           "Mark leidt een kantoorteam waarvan de herinneringen operatief zijn gescheiden tussen werk en privéleven.",
-        genres: ["Drama", "Mysterie"],
       },
       "pl-PL": {
         title: "Rozdzielenie",
         description:
           "Mark kieruje zespołem pracowników biurowych, których wspomnienia z pracy i życia prywatnego zostały chirurgicznie rozdzielone.",
-        genres: ["Dramat", "Tajemnica"],
       },
       "ja-JP": {
         title: "セヴェランス",
         description:
           "仕事と私生活の記憶を外科手術で分離されたオフィス社員のチームを率いるマークが、会社の謎に迫る。",
-        genres: ["ドラマ", "ミステリー"],
       },
       "ko-KR": {
         title: "세브란스: 단절",
         description:
           "직장과 사생활의 기억이 수술로 분리된 사무실 직원들을 이끄는 마크가 회사의 비밀을 마주한다.",
-        genres: ["드라마", "미스터리"],
       },
     },
   },
@@ -220,56 +194,47 @@ const SAMPLE_TITLES: readonly SampleTitle[] = [
       title: "Oppenheimer",
       description:
         "The story of American scientist J. Robert Oppenheimer and his role in the development of the atomic bomb.",
-      genres: ["Biography", "Drama"],
     },
     translations: {
       "en-US": {
         title: "Oppenheimer",
         description:
           "The story of American scientist J. Robert Oppenheimer and his role in the development of the atomic bomb.",
-        genres: ["Biography", "Drama"],
       },
       "it-IT": {
         title: "Oppenheimer",
         description:
           "La storia dello scienziato americano J. Robert Oppenheimer e del suo ruolo nello sviluppo della bomba atomica.",
-        genres: ["Biografico", "Drammatico"],
       },
       "fr-FR": {
         title: "Oppenheimer",
         description:
           "L'histoire du physicien américain J. Robert Oppenheimer et de son rôle dans la création de la bombe atomique.",
-        genres: ["Biographie", "Drame"],
       },
       "es-ES": {
         title: "Oppenheimer",
         description:
           "La historia del científico estadounidense J. Robert Oppenheimer y su papel en el desarrollo de la bomba atómica.",
-        genres: ["Biografía", "Drama"],
       },
       "de-DE": {
         title: "Oppenheimer",
         description:
           "Die Geschichte des amerikanischen Physikers J. Robert Oppenheimer und seiner Rolle bei der Entwicklung der Atombombe.",
-        genres: ["Biografie", "Drama"],
       },
       "pt-BR": {
         title: "Oppenheimer",
         description:
           "A história do físico americano J. Robert Oppenheimer e seu papel no desenvolvimento da bomba atômica.",
-        genres: ["Biografia", "Drama"],
       },
       "nl-NL": {
         title: "Oppenheimer",
         description:
           "Het verhaal van de Amerikaanse natuurkundige J. Robert Oppenheimer en zijn rol bij de ontwikkeling van de atoombom.",
-        genres: ["Biografie", "Drama"],
       },
       "pl-PL": {
         title: "Oppenheimer",
         description:
           "Historia amerykańskiego naukowca J. Roberta Oppenheimera i jego roli w stworzeniu bomby atomowej.",
-        genres: ["Biograficzny", "Dramat"],
       },
     },
   },
@@ -298,6 +263,9 @@ export default function MetadataLanguageSettings({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const optionRefs = useRef<Map<MetadataLanguage, HTMLButtonElement>>(
+    new Map(),
+  );
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -319,6 +287,11 @@ export default function MetadataLanguageSettings({
     for (const option of filtered) items.push(option.code);
     return items;
   }, [filtered, showStremioOption]);
+
+  const optionId = (option: MetadataLanguage) =>
+    `${listboxId}-option-${option}`;
+  const activeOption = open ? flatOptions[highlightedIndex] : undefined;
+  const activeOptionId = activeOption ? optionId(activeOption) : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -346,9 +319,19 @@ export default function MetadataLanguageSettings({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !activeOption) return;
+    optionRefs.current.get(activeOption)?.scrollIntoView({ block: "nearest" });
+  }, [open, activeOption]);
+
   const openMenu = () => {
     setQuery("");
-    const currentIndex = flatOptions.indexOf(value);
+    const currentIndex =
+      value === "stremio"
+        ? 0
+        : filterLanguageOptions("").findIndex(
+            (option) => option.code === value,
+          ) + 1;
     setHighlightedIndex(currentIndex >= 0 ? currentIndex : 0);
     setOpen(true);
   };
@@ -370,7 +353,7 @@ export default function MetadataLanguageSettings({
 
   const hintText =
     value === "stremio"
-      ? "Stremlist omits plot text, so Stremio loads descriptions from Cinemeta or your TMDB addon in your Stremio language."
+      ? "Catalog previews omit the plot. Opening a title uses an available metadata addon (such as Cinemeta or TMDB)."
       : value === "en-US"
         ? "Descriptions from IMDb and TMDB in English, the language Stremlist always used."
         : `Localized titles and descriptions from TMDB. When a title has no ${selectedLanguage?.englishName ?? "localized"} translation, English shows.`;
@@ -452,6 +435,11 @@ export default function MetadataLanguageSettings({
                 <input
                   ref={searchRef}
                   type="text"
+                  role="combobox"
+                  aria-expanded={open}
+                  aria-controls={listboxId}
+                  aria-autocomplete="list"
+                  aria-activedescendant={activeOptionId}
                   value={query}
                   onChange={(event) => {
                     setQuery(event.target.value);
@@ -507,6 +495,11 @@ export default function MetadataLanguageSettings({
                 {showStremioOption && (
                   <>
                     <button
+                      ref={(node) => {
+                        if (node) optionRefs.current.set("stremio", node);
+                        else optionRefs.current.delete("stremio");
+                      }}
+                      id={optionId("stremio")}
                       type="button"
                       role="option"
                       aria-label="Use Stremio's metadata"
@@ -529,7 +522,8 @@ export default function MetadataLanguageSettings({
                           Use Stremio&apos;s metadata
                         </span>
                         <span className="mt-0.5 block text-xs text-black/50">
-                          Let Cinemeta or your TMDB addon handle language
+                          Omit catalog plots; use your metadata addon on detail
+                          pages
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
@@ -561,6 +555,11 @@ export default function MetadataLanguageSettings({
                   return (
                     <button
                       key={option.code}
+                      ref={(node) => {
+                        if (node) optionRefs.current.set(option.code, node);
+                        else optionRefs.current.delete(option.code);
+                      }}
+                      id={optionId(option.code)}
                       type="button"
                       role="option"
                       aria-selected={selected}
@@ -690,8 +689,9 @@ export default function MetadataLanguageSettings({
                           </span>
                         </p>
                         <div className="rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2 text-xs text-pretty text-white/75">
-                          Filled by Stremio (Cinemeta or your TMDB addon) in
-                          your Stremio language.
+                          Catalog previews omit the plot in this mode. Opening
+                          the title uses an available metadata addon (such as
+                          Cinemeta or TMDB).
                         </div>
                       </>
                     ) : (
@@ -715,10 +715,6 @@ export default function MetadataLanguageSettings({
                               aria-hidden="true"
                             />
                             {activeSample.rating}
-                          </span>
-                          <span>·</span>
-                          <span className="truncate">
-                            {sampleMeta.genres.join(", ")}
                           </span>
                         </p>
                         <p className="text-xs leading-relaxed text-pretty text-white/75">

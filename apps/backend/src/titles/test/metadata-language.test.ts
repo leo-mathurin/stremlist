@@ -126,6 +126,17 @@ describe("localizeDescription", () => {
       "Detected by Stremlist on May 1 in Watchlist.\n\nTrama italiana.\n\nMore on Simkl: https://simkl.com/movies/1",
     );
   });
+
+  it("preserves every Provider link-back on a merged list", () => {
+    expect(
+      localizeDescription(
+        "English plot.\n\nMore on Simkl: https://simkl.com/movies/1\n\nMore on Trakt: https://trakt.tv/movies/dune-part-two",
+        "Trama italiana.",
+      ),
+    ).toBe(
+      "Trama italiana.\n\nMore on Simkl: https://simkl.com/movies/1\n\nMore on Trakt: https://trakt.tv/movies/dune-part-two",
+    );
+  });
 });
 
 describe("metadata language in Stremio responses", () => {
@@ -252,6 +263,29 @@ describe("metadata language in Stremio responses", () => {
     expect((await catalogMetas(englishAccount, OTHER_LIST_ID))[0]?.name).toBe(
       DUNE.name,
     );
+  });
+
+  it("matches catalog search against both localized and cached names before pagination", async () => {
+    tmdbFind();
+    const accountId = seedWithList({ metadata_language: "it-IT" });
+
+    const localizedRes = await app.request(
+      `/${accountId}/catalog/movie/wl-${LIST_ID}-movie/search=Parte%20due.json`,
+    );
+    expect(localizedRes.status).toBe(200);
+    const localized = await readJson(localizedRes, catalogMetasBody);
+    expect(localized.metas.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: DUNE.id, name: "Dune - Parte due" },
+    ]);
+
+    const cachedRes = await app.request(
+      `/${accountId}/catalog/movie/wl-${LIST_ID}-movie/search=Part%20Two.json`,
+    );
+    expect(cachedRes.status).toBe(200);
+    const cached = await readJson(cachedRes, catalogMetasBody);
+    expect(cached.metas.map(({ id, name }) => ({ id, name }))).toEqual([
+      { id: DUNE.id, name: "Dune - Parte due" },
+    ]);
   });
 });
 

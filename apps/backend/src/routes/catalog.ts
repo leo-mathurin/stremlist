@@ -19,7 +19,10 @@ import {
 } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
 import { toStremioMeta } from "../services/merged-lists";
-import { withAccountMetadata } from "../services/metadata";
+import {
+  localizedTitlesForAccount,
+  withAccountMetadata,
+} from "../services/metadata";
 import { withAccountPosters } from "../services/posters";
 
 const catalog = new Hono();
@@ -175,11 +178,18 @@ async function serveCatalog(c: Context) {
       policy: "catalog",
     });
 
-    const matchingMetas = filterCatalog(
+    const search = extra.get("search");
+    const filteredMetas = filterCatalog(
       listData.metas.filter((item) => item.type === requestedType),
       selection.filters,
-      extra.get("search"),
     );
+    const localizedNames = search?.trim()
+      ? await localizedTitlesForAccount(filteredMetas, access.account)
+      : undefined;
+    const matchingMetas =
+      search === null
+        ? filteredMetas
+        : filterCatalog(filteredMetas, [], search, localizedNames);
     const withPosters = await withAccountPosters(
       matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
       access.account,
