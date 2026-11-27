@@ -374,6 +374,7 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
       setup: {
         rpdbApiKey: "",
         posterSource: "imdb",
+        metadataLanguage: "en-US",
         catalogNamePrefix: true,
         lists: [],
         newTitles: { enabled: false },

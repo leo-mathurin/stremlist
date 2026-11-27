@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { DEFAULT_METADATA_LANGUAGE } from "@stremlist/shared/metadata-language";
 import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
@@ -182,6 +183,7 @@ const connections = new Hono()
             {
               newTitles: setup?.newTitles,
               posterSource: setup && savedPosterSource(setup),
+              metadataLanguage: setup?.metadataLanguage,
               catalogNamePrefix: setup?.catalogNamePrefix,
             },
           );
@@ -204,6 +206,8 @@ const connections = new Hono()
               posterSource:
                 (setup && savedPosterSource(setup)) ?? DEFAULT_POSTER_SOURCE,
               rpdbApiKey: rpdbKey(setup?.rpdbApiKey),
+              metadataLanguage:
+                setup?.metadataLanguage ?? DEFAULT_METADATA_LANGUAGE,
             }),
           );
           return c.json({ ok: true as const, accountId, created: true });

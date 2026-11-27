@@ -300,6 +300,20 @@
   }
 }
 
+@keyframes metadata-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+@keyframes metadata-text-fade {
+  from {
+    opacity: 0.35;
+    filter: blur(2px);
+  }
+}
+
 @keyframes checklist-check {
   from {
     opacity: 0;
@@ -332,8 +346,18 @@
     transition: opacity 120ms ease-out;
   }
 
+  .metadata-popover-in {
+    transform-origin: top center;
+    animation: metadata-popover-in 180ms var(--ease-out-quint) both;
+  }
+  .metadata-text-fade {
+    animation: metadata-text-fade 190ms var(--ease-out-quint) both;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .quick-add-reveal {
+    .quick-add-reveal,
+    .metadata-popover-in,
+    .metadata-text-fade {
       animation-name: checklist-fade-in;
     }
     .checklist-rise,

@@ -19,6 +19,7 @@ import {
 } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
 import { toStremioMeta } from "../services/merged-lists";
+import { withAccountMetadata } from "../services/metadata";
 import { withAccountPosters } from "../services/posters";
 
 const catalog = new Hono();
@@ -141,11 +142,12 @@ async function serveCatalog(c: Context) {
         { type, preset: preset ?? null },
         access.account.id,
       );
+      const withPosters = await withAccountPosters(
+        metas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
+        access.account,
+      );
       return c.json({
-        metas: await withAccountPosters(
-          metas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
-          access.account,
-        ),
+        metas: await withAccountMetadata(withPosters, access.account),
       });
     }
 
@@ -178,10 +180,11 @@ async function serveCatalog(c: Context) {
       selection.filters,
       extra.get("search"),
     );
-    const metas = await withAccountPosters(
+    const withPosters = await withAccountPosters(
       matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE).map(toStremioMeta),
       access.account,
     );
+    const metas = await withAccountMetadata(withPosters, access.account);
 
     console.log(
       `Serving catalog for user ${accountKey}, type: ${requestedType}, list: ${list.id}, skip: ${skip}, page items: ${metas.length}, total items: ${matchingMetas.length}`,

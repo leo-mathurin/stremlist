@@ -37,6 +37,7 @@ import { isCurrentConnection } from "./connection-identity";
 import { deleteConnection, getConnectionAccess } from "./connections";
 import type { OwnedConnectionAccess } from "./connections";
 import { recordSynchronization } from "./detections";
+import { withAccountMetadata } from "./metadata";
 import { withAccountPosters } from "./posters";
 import {
   deleteCachedList,
@@ -739,10 +740,12 @@ export async function findMetaInAccountCache(
       false,
     ).at(0);
     if (!found) return null;
-    const [meta] = await withAccountPosters(
+    if (access.account.metadataLanguage === "stremio") return null;
+    const withPosters = await withAccountPosters(
       [toStremioMeta(found)],
       access.account,
     );
+    const [meta] = await withAccountMetadata(withPosters, access.account);
     return meta;
   } catch (error) {
     console.error(

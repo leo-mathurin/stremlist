@@ -10,6 +10,7 @@
     "./imdb-charts": "./src/imdb-charts.ts",
     "./list-merge": "./src/list-merge.ts",
     "./manifest-catalogs": "./src/manifest-catalogs.ts",
+    "./metadata-language": "./src/metadata-language.ts",
     "./poster": "./src/poster.ts",
     "./provider-queue": "./src/provider-queue.ts",
     "./providers": "./src/providers.ts",

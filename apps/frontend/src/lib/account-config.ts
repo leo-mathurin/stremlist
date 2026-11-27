@@ -1,3 +1,4 @@
+import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
 import type { PosterSource } from "@stremlist/shared/poster";
 import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -86,6 +87,8 @@ export interface AccountForm {
   lists: ListFormRow[];
   rpdbApiKey: string;
   posterSource: PosterSource;
+  /** The language of Titles and descriptions in Stremio. */
+  metadataLanguage: MetadataLanguage;
   /** Whether Catalog names start with "Stremlist". */
   catalogNamePrefix: boolean;
   actionsEnabled: boolean;
@@ -102,6 +105,7 @@ export function configBody(form: AccountForm, access: AccountAccess) {
   return {
     rpdbApiKey: form.rpdbApiKey,
     posterSource: form.posterSource,
+    metadataLanguage: form.metadataLanguage,
     catalogNamePrefix: form.catalogNamePrefix,
     lists: listPayload(form.lists),
     actions:

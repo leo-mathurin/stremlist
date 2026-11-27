@@ -1,5 +1,6 @@
 import { asImdbId } from "@stremlist/shared/constants";
 import type { TitleType } from "@stremlist/shared/constants";
+import type { LocalizedMetadataLanguage } from "@stremlist/shared/metadata-language";
 import { z } from "zod";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { HttpError, providerFetchJson, RateLimiter } from "../providers/http";
@@ -100,4 +101,44 @@ export async function findTmdbPosterPath(title: {
       .map((result) => result.poster_path)
       .find((path): path is string => !!path && isTmdbPosterPath(path)) ?? null
   );
+}
+
+const findTranslationResultSchema = z.object({
+  title: z.string().nullish(),
+  name: z.string().nullish(),
+  overview: z.string().nullish(),
+});
+const findTranslationSchema = z.object({
+  movie_results: z.array(findTranslationResultSchema).nullish(),
+  tv_results: z.array(findTranslationResultSchema).nullish(),
+});
+
+function cleanText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * The TMDB localized title and plot summary of one Title in `language`, found
+ * by its IMDb ID. Fields are null when TMDB has no translation for them.
+ * Throws when TMDB fails.
+ */
+export async function findTmdbTranslation(
+  title: { id: string; type: TitleType },
+  language: LocalizedMetadataLanguage,
+) {
+  const data = await tmdbGet(`/find/${title.id}`, findTranslationSchema, {
+    external_source: "imdb_id",
+    language,
+  });
+  const movies = data?.movie_results ?? [];
+  const shows = data?.tv_results ?? [];
+  const ordered =
+    title.type === "series" ? [...shows, ...movies] : [...movies, ...shows];
+  const match = ordered[0];
+  if (!match) return { title: null, description: null };
+  return {
+    title: cleanText(match.title ?? match.name),
+    description: cleanText(match.overview),
+  };
 }

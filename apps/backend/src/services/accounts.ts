@@ -5,6 +5,11 @@ import {
   LEGACY_ALIAS_PATTERN,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
+import {
+  DEFAULT_METADATA_LANGUAGE,
+  isMetadataLanguage,
+} from "@stremlist/shared/metadata-language";
 import type { PosterSource } from "@stremlist/shared/poster";
 import {
   DEFAULT_POSTER_SOURCE,
@@ -36,6 +41,8 @@ export interface Account {
   rpdbApiKey: string | null;
   /** Where its posters come from (see `choosePoster`). */
   posterSource: PosterSource;
+  /** The language of Titles and descriptions in Stremio. */
+  metadataLanguage: MetadataLanguage;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
   /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
@@ -95,6 +102,9 @@ function mapAccount(row: AccountRow) {
     posterSource: isPosterSource(row.poster_source)
       ? row.poster_source
       : DEFAULT_POSTER_SOURCE,
+    metadataLanguage: isMetadataLanguage(row.metadata_language)
+      ? row.metadata_language
+      : DEFAULT_METADATA_LANGUAGE,
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
     newTitlesCatalog: row.new_titles_catalog,
@@ -257,7 +267,7 @@ export async function createAccountWithConfig(
   rpdbApiKey: string | null,
   settings: Pick<
     AccountConfigInput,
-    "newTitles" | "posterSource" | "catalogNamePrefix"
+    "newTitles" | "posterSource" | "metadataLanguage" | "catalogNamePrefix"
   > = {},
 ) {
   const { data, error } = await supabase.rpc("create_account_with_config", {
@@ -267,6 +277,7 @@ export async function createAccountWithConfig(
     p_new_titles_settings: toStoredNewTitles(settings.newTitles?.settings),
     p_poster_source: settings.posterSource ?? null,
     p_catalog_name_prefix: settings.catalogNamePrefix ?? null,
+    p_metadata_language: settings.metadataLanguage ?? null,
   });
   if (error) {
     console.error("Failed to create an account:", error.message);
@@ -287,10 +298,20 @@ export async function replaceAccountConfig(
   rpdbApiKey: string | null,
   settings: Pick<
     AccountConfigInput,
-    "actions" | "newTitles" | "posterSource" | "catalogNamePrefix"
+    | "actions"
+    | "newTitles"
+    | "posterSource"
+    | "metadataLanguage"
+    | "catalogNamePrefix"
   > = {},
 ) {
-  const { actions, newTitles, posterSource, catalogNamePrefix } = settings;
+  const {
+    actions,
+    newTitles,
+    posterSource,
+    metadataLanguage,
+    catalogNamePrefix,
+  } = settings;
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -301,6 +322,7 @@ export async function replaceAccountConfig(
     p_new_titles_settings: toStoredNewTitles(newTitles?.settings),
     p_poster_source: posterSource ?? null,
     p_catalog_name_prefix: catalogNamePrefix ?? null,
+    p_metadata_language: metadataLanguage ?? null,
   });
   if (error) {
     if (error.message === "Merged Source lists changed") {

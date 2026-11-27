@@ -1,13 +1,20 @@
 import { parseSortOption } from "@stremlist/shared/constants";
 import { listSources } from "@stremlist/shared/list-merge";
+import type { MetadataLanguage } from "@stremlist/shared/metadata-language";
+import { isLocalizedLanguage } from "@stremlist/shared/metadata-language";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
 import { findPosters } from "../titles/title-posters";
+import { findTranslations } from "../titles/title-translations";
 import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
 import type { PosterSettings } from "./posters";
 import { lookupSourceOf } from "./posters";
+
+type PrewarmSettings = PosterSettings & {
+  metadataLanguage?: MetadataLanguage;
+};
 
 const PREWARM_SOURCES = 10;
 const PREWARM_QUEUE_MS = 200_000;
@@ -51,7 +58,7 @@ async function runPrewarmBatch(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
-  posters: PosterSettings | null,
+  settings: PrewarmSettings | null,
 ) {
   const startedAt = performance.now();
   const queueDeadline = Date.now() + PREWARM_QUEUE_MS;
@@ -74,20 +81,30 @@ async function runPrewarmBatch(
         queueDeadline,
       });
       prewarmed += 1;
-      const source = posters && lookupSourceOf(posters);
-      if (source) {
+      const source = settings && lookupSourceOf(settings);
+      const language =
+        settings?.metadataLanguage &&
+        isLocalizedLanguage(settings.metadataLanguage)
+          ? settings.metadataLanguage
+          : null;
+      if (source || language) {
         const types =
           list.displayMode === "split"
             ? (["movie", "series"] as const)
             : [list.displayMode];
         for (const type of types) {
-          await findPosters(
-            source,
-            metas
-              .filter((meta) => meta.type === type)
-              .slice(0, PREWARM_POSTERS_PER_CATALOG),
-            { budgetMs: Infinity, size: "stremio" },
-          );
+          const slice = metas
+            .filter((meta) => meta.type === type)
+            .slice(0, PREWARM_POSTERS_PER_CATALOG);
+          if (source) {
+            await findPosters(source, slice, {
+              budgetMs: Infinity,
+              size: "stremio",
+            });
+          }
+          if (language) {
+            await findTranslations(language, slice, { budgetMs: Infinity });
+          }
         }
       }
     } catch (error) {
@@ -115,14 +132,14 @@ export async function prewarmLists(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
-  posters: PosterSettings | null = null,
+  settings: PrewarmSettings | null = null,
 ) {
   const leaseToken = randomUUID();
   let generation = await requestPrewarm(accountId, leaseToken);
   if (generation === null) return;
 
   for (;;) {
-    await runPrewarmBatch(accountId, lists, allowConnection, posters);
+    await runPrewarmBatch(accountId, lists, allowConnection, settings);
     const nextGeneration = await finishPrewarm(
       accountId,
       leaseToken,

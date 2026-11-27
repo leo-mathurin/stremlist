@@ -113,6 +113,7 @@ describe("List CRUD via the config API", () => {
           p_new_titles_catalog: null,
           p_poster_source: "rpdb",
           p_catalog_name_prefix: null,
+          p_metadata_language: null,
         },
       ]);
       const expected = [

@@ -1,6 +1,10 @@
 import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
 import type { MergeableList } from "@stremlist/shared/list-merge";
 import {
+  DEFAULT_METADATA_LANGUAGE,
+  isMetadataLanguage,
+} from "@stremlist/shared/metadata-language";
+import {
   DEFAULT_POSTER_SOURCE,
   isPosterSource,
 } from "@stremlist/shared/poster";
@@ -91,11 +95,12 @@ export function dropDraft() {
 
 type KeptForm = Omit<
   AccountForm,
-  "newTitles" | "posterSource" | "catalogNamePrefix"
+  "newTitles" | "posterSource" | "metadataLanguage" | "catalogNamePrefix"
 > & {
   newTitles?: unknown;
   newTitlesEnabled?: unknown;
   posterSource?: unknown;
+  metadataLanguage?: unknown;
   catalogNamePrefix?: unknown;
 };
 
@@ -157,6 +162,9 @@ export function readDraft(accountId: string | null) {
         : form.rpdbApiKey.trim()
           ? "rpdb"
           : DEFAULT_POSTER_SOURCE,
+      metadataLanguage: isMetadataLanguage(form.metadataLanguage)
+        ? form.metadataLanguage
+        : DEFAULT_METADATA_LANGUAGE,
       catalogNamePrefix: form.catalogNamePrefix !== false,
     } satisfies AccountForm;
   } catch {

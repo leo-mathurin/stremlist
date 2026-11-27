@@ -42,12 +42,15 @@ BEGIN
   ASSERT NOT (SELECT new_titles_catalog FROM public.accounts WHERE id = result.account_id);
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = result.account_id) = 'imdb',
     'A new Account starts on IMDb posters';
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = result.account_id) = 'en-US',
+    'A new Account starts on en-US metadata';
   ASSERT (SELECT catalog_name_prefix FROM public.accounts WHERE id = result.account_id),
     'A new Account starts with the Stremlist prefix';
   SELECT * INTO result FROM public.create_account_with_config(NULL, '[]', NULL, 'tmdb');
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = result.account_id) = 'tmdb';
-  SELECT * INTO result FROM public.create_account_with_config(NULL, '[]', NULL, NULL, NULL, false);
+  SELECT * INTO result FROM public.create_account_with_config(NULL, '[]', NULL, NULL, NULL, false, 'it-IT');
   ASSERT NOT (SELECT catalog_name_prefix FROM public.accounts WHERE id = result.account_id);
+  ASSERT (SELECT metadata_language FROM public.accounts WHERE id = result.account_id) = 'it-IT';
   ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 4;
 
   -- A configuration that cannot be saved leaves no Account behind.
@@ -69,9 +72,9 @@ BEGIN
   END;
   ASSERT (SELECT count(*) FROM public.accounts) = accounts_before + 4;
 
-  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean,text)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean,text)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.create_account_with_config(text,jsonb,boolean,text,jsonb,boolean,text)', 'EXECUTE');
 END;
 $$;
 

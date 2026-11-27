@@ -14,6 +14,7 @@ type GeneratedFunctions = GeneratedDatabase["public"]["Functions"];
 type NullableArgs = {
   create_account_with_config:
     | "p_catalog_name_prefix"
+    | "p_metadata_language"
     | "p_new_titles_catalog"
     | "p_poster_source"
     | "p_rpdb_api_key";
@@ -23,6 +24,7 @@ type NullableArgs = {
     | "p_action_providers"
     | "p_actions_enabled"
     | "p_catalog_name_prefix"
+    | "p_metadata_language"
     | "p_new_titles_catalog"
     | "p_poster_source"
     | "p_rpdb_api_key";

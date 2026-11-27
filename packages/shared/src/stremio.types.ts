@@ -2,6 +2,7 @@ import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode, TitleType } from "./constants";
 import type { ListSource } from "./list-merge";
 import type { NewTitlesSort } from "./manifest-catalogs";
+import type { MetadataLanguage } from "./metadata-language";
 import type { PosterSource } from "./poster";
 import type { ProviderId } from "./providers";
 import type { ListSyncStatuses } from "./sync-status";
@@ -107,6 +108,8 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   rpdbApiKey: string | null;
   /** Absent in an answer of an older backend: IMDb. */
   posterSource?: PosterSource;
+  /** Absent in an answer of an older backend: en-US. */
+  metadataLanguage?: MetadataLanguage;
   /**
    * Whether Catalog names start with "Stremlist". Absent in an answer of an
    * older backend: true.
@@ -143,6 +146,8 @@ export interface AccountConfigInput {
   rpdbApiKey?: string;
   /** Omitted: keep the saved source (IMDb for a new Account). */
   posterSource?: PosterSource;
+  /** Omitted: keep the saved language (`en-US` for a new Account). */
+  metadataLanguage?: MetadataLanguage;
   /** Omitted: keep the saved choice (true for a new Account). */
   catalogNamePrefix?: boolean;
   lists: ConfigListInput[];
@@ -167,6 +172,14 @@ export interface StremioMeta {
   runtime?: string;
   released?: string;
 }
+
+/**
+ * A Title as Stremio receives it from a catalog or meta route. When the
+ * Account lets Stremio supply descriptions, `description` is omitted.
+ */
+export type StremioCatalogMeta = Omit<StremioMeta, "description"> & {
+  description?: string;
+};
 
 export interface StremioCatalog {
   id: string;
