@@ -31,7 +31,7 @@ const memory = new LruCache<string, TitleTranslation>({
   ttlMs: MEMORY_TTL_MS,
 });
 let pausedUntil = 0;
-const running = new Map<string, Promise<void>>();
+const inFlight = new Map<string, Promise<void>>();
 
 const memoryKey = (language: LocalizedMetadataLanguage, id: string) =>
   `${language}:${id}`;
@@ -84,28 +84,42 @@ async function lookUpAll(
     description: string | null;
   }[] = [];
   await mapWithConcurrency(titles, CONCURRENCY, async (title) => {
-    if (Date.now() < pausedUntil) return;
-    try {
-      const entry = await findTmdbTranslation(title, language);
-      memory.set(memoryKey(language, title.id), entry, {
-        ttlMs: Math.min(
-          MEMORY_TTL_MS,
-          hasTranslation(entry) ? FOUND_TTL_MS : MISSING_TTL_MS,
-        ),
-      });
-      answered.push({
-        imdb_id: title.id,
-        title: entry.title,
-        description: entry.description,
-      });
-    } catch (error) {
-      if (Date.now() >= pausedUntil) {
-        console.warn(
-          `TMDB ${language} translation lookup failed, keeping English metadata for now:`,
-          error instanceof Error ? error.message : error,
-        );
+    const key = memoryKey(language, title.id);
+    if (memory.has(key) || Date.now() < pausedUntil) return;
+    const active = inFlight.get(key);
+    if (active) {
+      await active;
+      return;
+    }
+    const lookup = (async () => {
+      try {
+        const entry = await findTmdbTranslation(title, language);
+        memory.set(key, entry, {
+          ttlMs: Math.min(
+            MEMORY_TTL_MS,
+            hasTranslation(entry) ? FOUND_TTL_MS : MISSING_TTL_MS,
+          ),
+        });
+        answered.push({
+          imdb_id: title.id,
+          title: entry.title,
+          description: entry.description,
+        });
+      } catch (error) {
+        if (Date.now() >= pausedUntil) {
+          console.warn(
+            `TMDB ${language} translation lookup failed, keeping English metadata for now:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+        pausedUntil = Date.now() + FAILURE_PAUSE_MS;
       }
-      pausedUntil = Date.now() + FAILURE_PAUSE_MS;
+    })();
+    inFlight.set(key, lookup);
+    try {
+      await lookup;
+    } finally {
+      if (inFlight.get(key) === lookup) inFlight.delete(key);
     }
   });
   if (answered.length === 0) return;
@@ -156,34 +170,13 @@ export async function findTranslations(
         ({ id }) => !stored.has(id) && !memory.has(memoryKey(language, id)),
       );
       if (missing.length === 0 || Date.now() < pausedUntil) return;
-      const fresh = missing.filter(
-        ({ id }) => !running.has(memoryKey(language, id)),
-      );
-      const batches: Promise<void>[] = [];
-      let chain = Promise.resolve();
-      for (let start = 0; start < fresh.length; start += LOOKUP_BATCH_SIZE) {
-        const batch = fresh.slice(start, start + LOOKUP_BATCH_SIZE);
-        const step = chain.then(() => lookUpAll(language, batch));
-        chain = step;
-        batches.push(step);
-        for (const { id } of batch) {
-          running.set(memoryKey(language, id), step);
-        }
-        void step
-          .finally(() => {
-            for (const { id } of batch) {
-              const key = memoryKey(language, id);
-              if (running.get(key) === step) running.delete(key);
-            }
-          })
-          .catch(() => undefined);
+      for (let start = 0; start < missing.length; start += LOOKUP_BATCH_SIZE) {
+        if (Date.now() < pausedUntil) break;
+        await lookUpAll(
+          language,
+          missing.slice(start, start + LOOKUP_BATCH_SIZE),
+        );
       }
-      await Promise.all([
-        ...batches,
-        ...missing.flatMap(
-          ({ id }) => running.get(memoryKey(language, id)) ?? [],
-        ),
-      ]);
     })().catch((error: unknown) => {
       console.error(
         `TMDB ${language} translation lookup failed:`,
@@ -216,6 +209,6 @@ export async function findTranslations(
 /** For tests: forget the in-memory translation cache and any failure pause. */
 export function resetTranslationMemory() {
   memory.clear();
-  running.clear();
+  inFlight.clear();
   pausedUntil = 0;
 }

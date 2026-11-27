@@ -65,6 +65,20 @@ async function runPrewarmBatch(
   let prewarmed = 0;
   let free = PREWARM_SOURCES;
   let waiting: (() => void)[] = [];
+  let translationQueue = Promise.resolve();
+
+  const enqueueTranslations = (
+    language: Parameters<typeof findTranslations>[0],
+    titles: Parameters<typeof findTranslations>[1],
+  ) => {
+    const queued = translationQueue.then(() =>
+      findTranslations(language, titles, { budgetMs: Infinity }).then(
+        () => undefined,
+      ),
+    );
+    translationQueue = queued.catch(() => undefined);
+    return queued;
+  };
 
   const prewarmList = async (list: ConfigList) => {
     const sources = Math.min(listSources(list).length, PREWARM_SOURCES);
@@ -72,15 +86,26 @@ async function runPrewarmBatch(
       await new Promise<void>((resolve) => waiting.push(resolve));
     }
     free -= sources;
+    let metas: Awaited<ReturnType<typeof getListCatalog>>["metas"];
     try {
-      const { metas } = await getListCatalog(list, {
+      ({ metas } = await getListCatalog(list, {
         accountId,
         sort: parseSortOption(list.sortOption),
         allowConnection,
         policy: "prewarm",
         queueDeadline,
-      });
+      }));
       prewarmed += 1;
+    } catch (error) {
+      console.error(`Failed to prewarm list ${list.id}:`, error);
+      return;
+    } finally {
+      free += sources;
+      const woken = waiting;
+      waiting = [];
+      for (const wake of woken) wake();
+    }
+    try {
       const source = settings && lookupSourceOf(settings);
       const language =
         settings?.metadataLanguage &&
@@ -105,20 +130,16 @@ async function runPrewarmBatch(
             );
           }
           if (language) {
-            await findTranslations(language, typed, { budgetMs: Infinity });
+            await enqueueTranslations(language, typed);
           }
         }
       }
     } catch (error) {
-      console.error(`Failed to prewarm list ${list.id}:`, error);
-    } finally {
-      free += sources;
-      const woken = waiting;
-      waiting = [];
-      for (const wake of woken) wake();
+      console.error(`Failed to warm metadata for list ${list.id}:`, error);
     }
   };
   await Promise.all(lists.map(prewarmList));
+  await translationQueue;
 
   console.log(
     `Prewarmed ${prewarmed}/${lists.length} lists in ${Math.round(performance.now() - startedAt)}ms`,
