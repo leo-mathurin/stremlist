@@ -25,6 +25,8 @@ test(
     await firstItem.click();
 
     await expect(page).toHaveURL(new RegExp(`#/detail/movie/${first.id}`));
-    await expect(page.locator(`img[src*="${first.id}"]`).first()).toBeVisible();
+    await expect(
+      page.locator(`img[src*="${first.id}"]:visible`).first(),
+    ).toBeVisible();
   },
 );
